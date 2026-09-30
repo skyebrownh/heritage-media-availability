@@ -1,0 +1,15 @@
+# Secrets: real values live only in .env locally and in Railway's variables.
+.env
+
+# Python / uv build artifacts
+__pycache__/
+*.py[cod]
+.venv/
+
+# Output of `collectstatic` (WhiteNoise serves it; rebuilt on each deploy)
+staticfiles/
+
+# Editor and OS clutter
+.DS_Store
+.vscode/
+.idea/
