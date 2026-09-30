@@ -33,6 +33,11 @@ DEBUG = env_bool('DEBUG', default=False)
 # Hostnames this site may be served under, e.g. "localhost,127.0.0.1".
 ALLOWED_HOSTS = env_list('ALLOWED_HOSTS')
 
+# Full origins (scheme + host) allowed to submit forms over HTTPS, e.g.
+# "https://heritage-media.up.railway.app". Django checks the browser's Origin
+# header on every POST; without this, the admin login would fail in production.
+CSRF_TRUSTED_ORIGINS = env_list('CSRF_TRUSTED_ORIGINS')
+
 
 # Application definition
 
@@ -49,6 +54,10 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # WhiteNoise serves static files (admin CSS/JS) straight from gunicorn, so
+    # we don't need a separate web server. It goes right after SecurityMiddleware
+    # so static requests skip the rest of the stack.
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -84,7 +93,15 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Using the same database engine in both places means no "works on my machine"
 # surprises, and we can rely on Postgres-only features like ArrayField.
 DATABASES = {
-    'default': parse_database_url(env_required('DATABASE_URL')),
+    'default': {
+        **parse_database_url(env_required('DATABASE_URL')),
+        # Reuse each database connection for up to 60 seconds instead of opening
+        # a new one per page view. That keeps pages fast (NFR: under 2 seconds).
+        'CONN_MAX_AGE': 60,
+        # Before reusing a connection, check it's still alive, so a database
+        # restart on Railway doesn't cause one failed request.
+        'CONN_HEALTH_CHECKS': True,
+    },
 }
 
 
@@ -125,6 +142,74 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = 'static/'
+
+# `collectstatic` copies every app's static files here; WhiteNoise serves them.
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    # Compressed (gzip/brotli) copies make the admin's CSS/JS smaller on mobile data.
+    # We use the plain Compressed storage, not the "Manifest" variant that adds
+    # hashes to filenames: the Manifest variant fails any test that renders a page
+    # with {% static %} unless collectstatic ran first. Our only static files are
+    # the admin's (Tailwind comes from a CDN), so the hashing isn't worth that.
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage',
+    },
+}
+
+
+# HTTPS and production hardening
+# https://docs.djangoproject.com/en/6.1/ref/settings/#secure-proxy-ssl-header
+
+# Railway's proxy handles HTTPS and forwards plain HTTP to gunicorn, adding an
+# X-Forwarded-Proto header that says what the browser really used. This tells
+# Django to trust that header. Without it Django thinks every request is
+# insecure, and the HTTPS redirect below would loop forever.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# These only switch on when DEBUG is off, so local http://127.0.0.1 keeps working.
+# NFR "HTTPS everywhere": send any http:// visit to https://.
+SECURE_SSL_REDIRECT = not DEBUG
+# Only send login and CSRF cookies over HTTPS.
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+# HSTS tells browsers to use HTTPS for this site for the next 30 days without
+# even trying http://. We don't include subdomains or request preload, because
+# we don't control the rest of the Railway domain.
+SECURE_HSTS_SECONDS = 0 if DEBUG else 60 * 60 * 24 * 30
+
+# Warnings from `manage.py check --deploy` that we've reviewed and accepted:
+SILENCED_SYSTEM_CHECKS = [
+    # v1 sends no email (notifications are out of scope), so the console
+    # email backend is fine; nothing ever calls it.
+    'mail.E001',
+    # HSTS for subdomains / browser preload lists only makes sense for a domain
+    # we own. *.up.railway.app belongs to Railway. Revisit with a custom domain.
+    'security.W005',
+    'security.W021',
+]
+
+
+# Logging
+# https://docs.djangoproject.com/en/6.1/topics/logging/
+
+# By default, when DEBUG is off, Django emails errors to admins and prints
+# nothing. We have no email, so send warnings and errors to the console
+# instead. Railway shows the console in the service's Logs tab.
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {'class': 'logging.StreamHandler'},
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'WARNING',
+    },
+}
 
 
 # Email

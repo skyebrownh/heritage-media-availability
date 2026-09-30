@@ -6,6 +6,8 @@ Django creates a separate throwaway test database, so your real data is safe.
 """
 
 import os
+import runpy
+from pathlib import Path
 from unittest import mock
 
 from django.core.exceptions import ImproperlyConfigured
@@ -77,3 +79,47 @@ class EnvHelperTests(SimpleTestCase):
     def test_env_list_trims_spaces_and_blanks(self):
         with mock.patch.dict(os.environ, {'HOSTS': ' localhost, 127.0.0.1 ,,'}):
             self.assertEqual(env_list('HOSTS'), ['localhost', '127.0.0.1'])
+
+
+class ProductionSettingsTests(SimpleTestCase):
+    """
+    With DEBUG off (as on Railway), the HTTPS protections switch on.
+
+    Settings are computed once when Django starts, so we can't just flip DEBUG
+    inside a test. Instead we run settings.py again as a plain Python file with
+    a production-like environment and inspect the values it produces.
+    """
+
+    SETTINGS_FILE = Path(__file__).resolve().parent.parent / 'config' / 'settings.py'
+
+    def load_settings(self, **env):
+        """Evaluate settings.py with the given environment variables."""
+        base_env = {
+            'SECRET_KEY': 'test-only-key',
+            'DATABASE_URL': 'postgresql://user:pw@db.internal:5432/app',
+            'ALLOWED_HOSTS': 'example.up.railway.app',
+            'CSRF_TRUSTED_ORIGINS': 'https://example.up.railway.app',
+        }
+        with mock.patch.dict(os.environ, {**base_env, **env}, clear=True):
+            return runpy.run_path(str(self.SETTINGS_FILE))
+
+    def test_production_forces_https(self):
+        settings = self.load_settings(DEBUG='false')
+        self.assertFalse(settings['DEBUG'])
+        self.assertTrue(settings['SECURE_SSL_REDIRECT'])
+        self.assertTrue(settings['SESSION_COOKIE_SECURE'])
+        self.assertTrue(settings['CSRF_COOKIE_SECURE'])
+        self.assertGreater(settings['SECURE_HSTS_SECONDS'], 0)
+        self.assertEqual(settings['CSRF_TRUSTED_ORIGINS'], ['https://example.up.railway.app'])
+
+    def test_missing_debug_means_production(self):
+        # Forgetting to set DEBUG on Railway must still give the secure setup.
+        settings = self.load_settings()
+        self.assertFalse(settings['DEBUG'])
+        self.assertTrue(settings['SECURE_SSL_REDIRECT'])
+
+    def test_local_debug_keeps_plain_http(self):
+        # Locally we browse http://127.0.0.1, so no redirect or HSTS there.
+        settings = self.load_settings(DEBUG='true')
+        self.assertFalse(settings['SECURE_SSL_REDIRECT'])
+        self.assertEqual(settings['SECURE_HSTS_SECONDS'], 0)

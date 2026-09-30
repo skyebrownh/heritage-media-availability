@@ -94,6 +94,12 @@ All commands load local settings from `.env` (copy `.env.example` first).
 - Run tests: `uv run --env-file .env python manage.py test`
 - Apply database migrations: `uv run --env-file .env python manage.py migrate`
 - Create admin user: *TBD (Step 3)*
+- Production readiness check: `DEBUG=false uv run --env-file .env python manage.py check --deploy` (should report no issues)
+
+Deploying: pushing/merging to `main` deploys on Railway. `railway.json` (JSON, so it can't hold comments) tells Railway to:
+- build with Railpack, which installs exactly what's in `uv.lock` and uses `.python-version`;
+- run `python manage.py migrate` before each deploy (a failed migration cancels the deploy, and the old version keeps running);
+- start with `collectstatic` then `gunicorn config.wsgi` (gunicorn options live in `gunicorn.conf.py`).
 
 ### Decisions
 
@@ -111,4 +117,6 @@ All commands load local settings from `.env` (copy `.env.example` first).
 - 2026-09-28: Member names are unique regardless of capitalization ("bob" and "Bob" count as duplicates).
 - 2026-09-28: By-person copy lists responders A–Z, then non-responders A–Z.
 - 2026-09-28: TF-6 all-month choice is a dropdown (specific days / available all month / unavailable all month) instead of toggles.
+- 2026-09-30: Static files use WhiteNoise's `CompressedStaticFilesStorage` (no filename hashing), so tests don't need `collectstatic` first. Only admin files are static; Tailwind comes from the CDN.
+- 2026-09-30: `check --deploy` warnings silenced on purpose: mail.E001 (v1 sends no email), security.W005/W021 (HSTS subdomains/preload; we don't own railway.app). Revisit if we add a custom domain.
 - 2026-09-28: To review later: weekly database backups (NFR). Check what Railway Hobby provides when we reach deployment hardening.
