@@ -1,0 +1,17 @@
+"""
+URL routes for the Heritage Media Availability app.
+
+config/urls.py includes this file at the site root, so '' here means "/".
+"""
+
+from django.urls import path
+
+from . import views
+
+# Namespacing lets templates say {% url 'heritage_media_availability:home' %}
+# without clashing with URL names from Django's own apps.
+app_name = 'heritage_media_availability'
+
+urlpatterns = [
+    path('', views.home, name='home'),
+]

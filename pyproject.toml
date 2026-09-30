@@ -1,0 +1,8 @@
+[project]
+name = "heritage-media-availability"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "django>=6.1.1",
+    "psycopg[binary]>=3.3.6",
+]

@@ -88,9 +88,12 @@ Write good explanatory comments throughout. I'll be reading this code to learn f
 
 \<!-- Fill in as the project is set up. -->
 
-- Run locally: *TBD*
-- Run tests: *TBD*
-- Create admin user: *TBD*
+All commands load local settings from `.env` (copy `.env.example` first).
+
+- Run locally: `uv run --env-file .env python manage.py runserver` → http://127.0.0.1:8000/
+- Run tests: `uv run --env-file .env python manage.py test`
+- Apply database migrations: `uv run --env-file .env python manage.py migrate`
+- Create admin user: *TBD (Step 3)*
 
 ### Decisions
 
