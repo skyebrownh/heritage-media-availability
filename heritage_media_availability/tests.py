@@ -17,7 +17,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import ProtectedError
-from django.test import SimpleTestCase, TestCase
+from django.test import Client, SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import escape
@@ -251,6 +251,23 @@ class SubmitTests(TestCase):
     def test_only_get_and_post_are_allowed(self):
         with self.assertLogs('django.request', level='WARNING'):
             self.assertEqual(self.client.put(self.url).status_code, 405)
+
+
+class CsrfFailurePageTests(TestCase):
+    """A stale form token gets a friendly page instead of Django's technical 403."""
+
+    def test_stale_token_shows_friendly_page_and_saves_nothing(self):
+        bob = Member.objects.create(first_name='Bob', last_name='Smith')
+        # The normal test client skips CSRF checks; this one enforces them like a browser.
+        client = Client(enforce_csrf_checks=True)
+        data = {'member': bob.pk, 'month': '2026-11', 'kind': 'available_all', 'csrfmiddlewaretoken': 'stale'}
+        with self.assertLogs('django.security.csrf', level='WARNING'):
+            response = client.post(reverse('heritage_media_availability:team_form'), data)
+        self.assertEqual(response.status_code, 403)
+        self.assertContains(response, 'Your form expired.', status_code=403)
+        self.assertContains(response, 'Back to the form', status_code=403)
+        self.assertNotContains(response, 'CSRF verification failed', status_code=403)
+        self.assertFalse(Submission.objects.exists())
 
 
 class ConfirmationPageTests(TestCase):

@@ -1,0 +1,22 @@
+{% extends "heritage_media_availability/base.html" %}
+
+{% comment %}
+  Shown instead of Django's "CSRF verification failed" page when a form's
+  security token is stale (see views.csrf_failure). Nothing was saved.
+  Plain wording and one clear way forward, for less tech-comfortable users.
+{% endcomment %}
+
+{% block title %}Please try again · Heritage Media Availability{% endblock %}
+
+{% block content %}
+<div class="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-neutral-200 sm:p-6">
+  <h1 class="text-2xl font-semibold">Something went wrong</h1>
+  <p class="mt-4 text-neutral-700">Your form expired. Please go back to the form and try again. Sorry about that!</p>
+
+  {# A fresh GET of the form gets a fresh token, so the next submit works. #}
+  <a href="{% url 'heritage_media_availability:team_form' %}"
+     class="mt-6 flex min-h-12 w-full items-center justify-center rounded-xl bg-accent-700 px-4 py-3 text-lg font-semibold text-white hover:opacity-90 focus:outline-none focus:ring-4 focus:ring-accent-200">
+    Back to the form
+  </a>
+</div>
+{% endblock %}

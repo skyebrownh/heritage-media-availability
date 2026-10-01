@@ -65,3 +65,16 @@ def thanks(request):
         'heritage_media_availability/thanks.html',
         {'submission': submission, 'message': confirmation_message(submission)},
     )
+
+
+def csrf_failure(request, reason=''):
+    """
+    Friendly page for a refused form submit (settings.CSRF_FAILURE_VIEW).
+
+    Django refuses a POST whose security (CSRF) token doesn't match, e.g.
+    the browser's cookies were cleared while the form was open, or someone
+    logged into admin in another tab. Django's own page is technical, so
+    volunteers get a plain explanation and a way back instead. The status
+    stays 403 (refused); `reason` is Django's technical cause, not shown.
+    """
+    return render(request, 'heritage_media_availability/csrf_failure.html', status=403)
