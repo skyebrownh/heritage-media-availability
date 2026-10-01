@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 from django.conf import settings
+from django.contrib.admin.models import DELETION, LogEntry
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.db import IntegrityError, transaction
@@ -760,6 +761,56 @@ class ClosedMonthAdminTests(TestCase):
             self.client.post(change_url, {'month': '2026-12'})
             self.client.post(delete_url, {'post': 'yes'})
         self.assertEqual(list(ClosedMonth.objects.values_list('month', flat=True)), ['2026-11'])
+
+
+class ClosedMonthHistoryTests(TestCase):
+    """#16: closing and reopening months are recorded in admin History."""
+
+    def setUp(self):
+        self.admin_user = get_user_model().objects.create_superuser('skye', password='test-pass-123')
+        self.client.force_login(self.admin_user)
+        self.add_url = reverse('admin:heritage_media_availability_closedmonth_add')
+        self.list_url = reverse('admin:heritage_media_availability_closedmonth_changelist')
+
+    def close(self, month):
+        """Close a month through the admin, including the confirmation step."""
+        self.client.post(self.add_url, {'month': month, 'confirm': 'yes'})
+
+    def reopen(self, *months):
+        """Reopen months with the "Reopen selected months" action."""
+        self.client.post(self.list_url, {'action': 'reopen_months', '_selected_action': list(months)})
+
+    def entries(self, month):
+        """(action, description, user) for each History entry for a month, oldest first."""
+        return [
+            (entry.get_action_flag_display(), entry.get_change_message(), entry.user.username)
+            for entry in LogEntry.objects.filter(object_id=month).order_by('action_time', 'pk')
+        ]
+
+    CLOSED = ('Addition', 'Closed the month.', 'skye')
+    REOPENED = ('Deletion', 'Reopened the month.', 'skye')
+
+    def test_closing_is_recorded(self):
+        self.close('2026-11')
+        self.assertEqual(self.entries('2026-11'), [self.CLOSED])
+
+    def test_reopening_is_recorded_for_each_month(self):
+        self.close('2026-11')
+        self.close('2026-12')
+        self.reopen('2026-11', '2026-12')
+        self.assertEqual(self.entries('2026-11'), [self.CLOSED, self.REOPENED])
+        self.assertEqual(self.entries('2026-12'), [self.CLOSED, self.REOPENED])
+        self.assertEqual(LogEntry.objects.get(object_id='2026-11', action_flag=DELETION).object_repr, 'November 2026')
+
+    def test_reclosed_month_history_shows_the_whole_timeline(self):
+        self.close('2026-11')
+        self.reopen('2026-11')
+        self.close('2026-11')
+        self.assertEqual(self.entries('2026-11'), [self.CLOSED, self.REOPENED, self.CLOSED])
+        history_url = reverse('admin:heritage_media_availability_closedmonth_history', args=['2026-11'])
+        response = self.client.get(history_url)
+        self.assertContains(response, 'Closed the month.', count=2)
+        self.assertContains(response, 'Reopened the month.', count=1)
 
 
 class SubmissionAdminTests(TestCase):
