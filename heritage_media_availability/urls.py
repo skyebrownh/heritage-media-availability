@@ -14,4 +14,5 @@ app_name = 'heritage_media_availability'
 
 urlpatterns = [
     path('', views.team_form, name='team_form'),
+    path('thanks/', views.thanks, name='thanks'),
 ]

@@ -1,0 +1,35 @@
+{% extends "heritage_media_availability/base.html" %}
+
+{% comment %}
+  TF-10: confirmation after a successful submit, at /thanks/.
+  Restates what was saved (greeting by first name), shows their note, and
+  offers a button to fill out another month. Reached by a redirect after
+  the POST, so refreshing this page never submits again.
+{% endcomment %}
+
+{% block title %}Thanks! · Heritage Media Availability{% endblock %}
+
+{% block content %}
+<div class="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-neutral-200 sm:p-6">
+  <h1 class="text-2xl font-semibold">Availability saved</h1>
+
+  {# The confirmation sentence, e.g. "Thanks, Bob! You're unavailable Oct 3-7, and 20." #}
+  <p class="mt-4 rounded-xl bg-accent-50 p-4 text-lg text-accent-700 ring-1 ring-accent-200">{{ message }}</p>
+
+  {% if submission.notes %}
+  {# Their note, shown as typed. linebreaksbr keeps their line breaks; Django escapes the text. #}
+  <div class="mt-4">
+    <p class="font-medium">Your note</p>
+    <p class="mt-1 text-neutral-700">{{ submission.notes|linebreaksbr }}</p>
+  </div>
+  {% endif %}
+
+  <p class="mt-4 text-neutral-600">Need to change something? Just fill out the form again for that month. Your newest answer replaces the old one.</p>
+
+  {# TF-10: start over for another month. A link styled as a big button (≥44px). #}
+  <a href="{% url 'heritage_media_availability:team_form' %}"
+     class="mt-6 flex min-h-12 w-full items-center justify-center rounded-xl bg-accent-700 px-4 py-3 text-lg font-semibold text-white hover:opacity-90 focus:outline-none focus:ring-4 focus:ring-accent-200">
+    Fill out another month
+  </a>
+</div>
+{% endblock %}

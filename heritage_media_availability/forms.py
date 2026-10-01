@@ -1,12 +1,14 @@
 """
 Forms for the team-facing pages.
 
-TeamForm draws the team form's inputs and (from #8 on) checks a submission
-on the server. Keeping both jobs in one class means the page and the server
-always agree on which names and months are allowed.
+TeamForm both draws the team form's inputs and checks a submission on the
+server before saving it. Keeping both jobs in one class means the page and
+the server agree on the rules, and every rule is enforced on the server
+(CLAUDE.md: "Validate everything on the server").
 """
 
 from django import forms
+from django.core.exceptions import ValidationError
 
 from .models import ClosedMonth, Member, Submission
 from .months import month_label, month_weeks, upcoming_months
@@ -25,6 +27,45 @@ TEXTAREA_CLASSES = (
     'block w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-base '
     'focus:border-accent-500 focus:outline-none focus:ring-4 focus:ring-accent-200'
 )
+
+
+# TF-4: shown when a month is closed, both by the page script (as soon as the
+# month is picked) and by the server (if a stale form is submitted anyway).
+CLOSED_MONTH_MESSAGE = "This month's schedule is finalized. Please text Skye with any changes."
+
+
+class AnyMemberChoiceField(forms.ModelChoiceField):
+    """
+    A name dropdown that lists active members but accepts any member.
+
+    The dropdown shows active people only (TF-2). But if Skye marks someone
+    inactive while their form is open, their submission is still accepted
+    (decision 2026-10-01), so the server looks the name up among everyone.
+    """
+
+    def to_python(self, value):
+        """Find the submitted member among all members, active or not."""
+        if value in self.empty_values:
+            return None
+        try:
+            return Member.objects.get(pk=value)
+        except (ValueError, TypeError, Member.DoesNotExist):
+            raise ValidationError(self.error_messages['invalid_choice'], code='invalid_choice')
+
+
+class AnyMonthChoiceField(forms.ChoiceField):
+    """
+    A month dropdown that lists 7 months but accepts any real month.
+
+    SPEC.md: "A closed month is the only reason the server rejects a month."
+    So a form opened on Sept 30 and sent on Oct 1 for September still saves.
+    The month's format is checked by the model (validate_month), and closed
+    months by TeamForm.clean_month().
+    """
+
+    def valid_value(self, value):
+        """Skip ChoiceField's "must be one of the listed options" check."""
+        return True
 
 
 class MonthSelect(forms.Select):
@@ -49,29 +90,41 @@ class MonthSelect(forms.Select):
         return option
 
 
-class TeamForm(forms.Form):
+class TeamForm(forms.ModelForm):
     """
-    The team availability form.
+    The team availability form (TF-2 to TF-8).
 
-    #6: name and month pickers. #7: all-month choice, calendar days and notes.
-    #8 uses this form to validate submissions on the server.
+    A ModelForm: after its own field checks, Django runs the Submission
+    model's checks (Submission.clean: days vs. all-month choice, days that
+    exist in the month) and shows any errors on the matching fields.
+    form.save() then creates a new Submission row; old rows are never changed.
     """
+
+    class Meta:
+        model = Submission
+        fields = ['member', 'month', 'kind', 'days', 'notes']
 
     # No colon after labels; they read like plain questions.
     label_suffix = ''
 
     # TF-2: active members only, shown as "First Last" (Member.__str__) and
     # sorted by first then last name (Member's default ordering).
-    member = forms.ModelChoiceField(
+    member = AnyMemberChoiceField(
         label='Your name',
         queryset=Member.objects.filter(is_active=True),
         empty_label='Choose your name',
         widget=forms.Select(attrs={'class': SELECT_CLASSES}),
+        # TF-8: plain-language messages for each missing piece.
+        error_messages={
+            'required': 'Please choose your name.',
+            'invalid_choice': 'Please choose your name from the list.',
+        },
     )
     # TF-3: choices are filled in __init__, because the months depend on today's date.
-    month = forms.ChoiceField(
+    month = AnyMonthChoiceField(
         label='Which month?',
         widget=MonthSelect(attrs={'class': SELECT_CLASSES}),
+        error_messages={'required': 'Please choose a month.'},
     )
 
     # TF-6: the three answers, worded for the team. The stored values match
@@ -88,7 +141,8 @@ class TeamForm(forms.Form):
     )
     # TF-5: day numbers ticked on the calendar. The template draws the
     # calendar itself (one per month), so this field only defines what's
-    # accepted: whole numbers 1-31. #8 adds the per-month check (no Feb 30).
+    # accepted: whole numbers 1-31. The model checks each day exists in the
+    # chosen month (no Feb 30).
     days = forms.TypedMultipleChoiceField(
         choices=[(day, str(day)) for day in range(1, 32)],
         coerce=int,
@@ -127,6 +181,34 @@ class TeamForm(forms.Form):
         self.fields['month'].choices = choices
         self.fields['month'].widget.closed_months = closed
 
+    def clean_month(self):
+        """
+        Reject closed months, even from a form opened before the month closed.
+
+        The page script already hides the form for a closed month, but a
+        stale tab can still send one, so the server has the final word.
+        """
+        month = self.cleaned_data['month']
+        if ClosedMonth.objects.filter(month=month).exists():
+            raise ValidationError(CLOSED_MONTH_MESSAGE, code='month_closed')
+        return month
+
+    def _post_clean(self):
+        """
+        Run the model's checks, unless the month is closed.
+
+        For a closed month, the only useful message is "text Skye"; errors
+        about missing days would just be noise, so skip the model's checks.
+        """
+        if self.has_error('month', code='month_closed'):
+            return
+        super()._post_clean()
+
+    @property
+    def month_closed(self):
+        """True if this (submitted) form was rejected because its month is closed."""
+        return self.has_error('month', code='month_closed')
+
     @property
     def calendars(self):
         """
@@ -136,7 +218,20 @@ class TeamForm(forms.Form):
         Drawing them on the server keeps the date math (which weekday the 1st
         falls on, how many days) in tested Python rather than JavaScript.
         """
+        # After a failed submit, re-tick the days the person had chosen so
+        # they only need to fix the problem, not start over.
+        submitted_month, checked = None, set()
+        if self.is_bound:
+            submitted_month = self.data.get('month')
+            checked = {value for value in self.data.getlist('days') if value.isdigit()}
+            checked = {int(value) for value in checked}
+
         return [
-            {'month': month, 'label': month_label(month), 'weeks': month_weeks(month)}
+            {
+                'month': month,
+                'label': month_label(month),
+                'weeks': month_weeks(month),
+                'checked': checked if month == submitted_month else set(),
+            }
             for month in self.months
         ]

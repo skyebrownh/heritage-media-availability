@@ -20,9 +20,12 @@ from django.db.models import ProtectedError
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.html import escape
 
 from config.env import env_bool, env_list, env_required, parse_database_url
 
+from .formatting import confirmation_message, day_ranges
+from .forms import CLOSED_MONTH_MESSAGE
 from .models import ClosedMonth, Member, Submission
 from .months import days_in_month, month_label, month_weeks, upcoming_months, validate_month
 
@@ -76,9 +79,17 @@ class TeamFormPageTests(TestCase):
         self.assertContains(response, '<option value="2026-11" data-closed>November 2026 (closed)</option>', html=True)
         self.assertContains(response, '<option value="2026-12">December 2026</option>', html=True)
 
-    def test_closed_message_text_is_on_the_page(self):
-        # TF-4: exact wording. Showing and hiding it is covered by the manual test steps.
-        self.assertContains(self.client.get(self.url), "This month's schedule is finalized. Please text Skye with any changes.")
+    def test_closed_message_is_ready_for_the_script(self):
+        # TF-4: exact wording, defined once, plus the hint toward another month.
+        # It sits in a <template> until the script copies it in; showing and
+        # hiding it is covered by the manual test steps.
+        self.assertEqual(CLOSED_MONTH_MESSAGE, "This month's schedule is finalized. Please text Skye with any changes.")
+        html = self.client.get(self.url).content.decode()
+        template = re.search(r'<template id="closed-month-template">(.*?)</template>', html, re.DOTALL).group(1)
+        self.assertIn(escape(CLOSED_MONTH_MESSAGE), template)
+        self.assertIn('You can choose a different month above.', template)
+        # Not shown yet: the live region starts empty.
+        self.assertIn('<div id="closed-month-message" role="status"></div>', html)
 
 
 class TeamFormDetailsTests(TestCase):
@@ -133,6 +144,180 @@ class TeamFormDetailsTests(TestCase):
         calendar = self.fieldset(self.get().content.decode(), '2026-10')
         self.assertIn('<span class="sr-only">Saturday, October 3</span>', calendar)
         self.assertIn('for="day-2026-10-3"', calendar)
+
+
+class SubmitTests(TestCase):
+    """Submitting the team form: server checks and saving (TF-8, business rules)."""
+
+    url = reverse('heritage_media_availability:team_form')
+    thanks_url = reverse('heritage_media_availability:thanks')
+
+    def setUp(self):
+        self.bob = Member.objects.create(first_name='Bob', last_name='Smith')
+
+    def post(self, **overrides):
+        """Submit the form as of Oct 1, 2026: Bob, November, days 3 and 20, unless overridden."""
+        data = {'member': self.bob.pk, 'month': '2026-11', 'kind': 'days', 'days': ['3', '20'], 'notes': ''}
+        data.update(overrides)
+        with at_utc(2026, 10, 1, 12, 0):
+            return self.client.post(self.url, data)
+
+    def assertRejected(self, response, message):
+        """The form came back (no save) showing message."""
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, message)
+        self.assertFalse(Submission.objects.exists())
+
+    def test_valid_submit_saves_and_redirects_to_confirmation(self):
+        response = self.post(notes='Can do the 12th, but no rehearsal on the 11th')
+        self.assertRedirects(response, self.thanks_url)
+        submission = Submission.objects.get()
+        self.assertEqual(
+            (submission.member, submission.month, submission.kind, submission.days, submission.notes),
+            (self.bob, '2026-11', 'days', [3, 20], 'Can do the 12th, but no rehearsal on the 11th'),
+        )
+
+    def test_all_month_submit_saves_with_no_days(self):
+        self.post(kind='unavailable_all', days=[])
+        self.assertEqual(Submission.objects.get().kind, 'unavailable_all')
+
+    def test_resubmitting_adds_a_row_and_the_newest_is_current(self):
+        self.post(days=['3'])
+        self.post(kind='available_all', days=[])
+        self.assertEqual(Submission.objects.count(), 2)
+        self.assertEqual(Submission.objects.current().get().kind, 'available_all')
+
+    def test_missing_pieces_get_plain_language_messages(self):
+        # TF-8: name, month, and at least one day (or an all-month option).
+        self.assertRejected(self.post(member=''), 'Please choose your name.')
+        self.assertRejected(self.post(month=''), 'Please choose a month.')
+        self.assertRejected(self.post(days=[]), 'Pick at least one day, or choose an all-month option.')
+
+    def test_errors_are_summarized_for_screen_readers(self):
+        response = self.post(member='', days=[])
+        self.assertContains(response, 'role="alert"')
+        self.assertContains(response, 'Almost there! Please fix:')
+
+    def test_ticked_days_survive_a_failed_submit(self):
+        response = self.post(member='')
+        html = response.content.decode()
+        for day in ['3', '20']:
+            self.assertRegex(html, rf'id="day-2026-11-{day}"[^>]*checked')
+        self.assertNotRegex(html, r'id="day-2026-11-4"[^>]*checked')
+
+    def test_closed_month_is_rejected_even_from_an_open_form(self):
+        # The page was loaded before Skye closed November; the submit still fails.
+        ClosedMonth.objects.create(month='2026-11')
+        response = self.post()
+        # escape(): Django writes the apostrophe as &#x27; in the HTML.
+        self.assertRejected(response, escape(CLOSED_MONTH_MESSAGE))
+        # The box is drawn by the server, with the hint toward another month.
+        html = response.content.decode()
+        box = re.search(r'<div id="closed-month-message" role="status">(.*?)</div>\s*</div>', html, re.DOTALL).group(1)
+        self.assertIn(escape(CLOSED_MONTH_MESSAGE), box)
+        self.assertIn('You can choose a different month above.', box)
+        # Only the TF-4 box: no error summary or "pick a day" noise.
+        self.assertNotContains(response, 'Almost there!')
+
+    def test_refreshing_after_a_closed_month_rejection_still_rejects(self):
+        # Refreshing a page that came from a POST makes the browser send the
+        # same POST again ("Confirm form resubmission"). It must fail the same way.
+        ClosedMonth.objects.create(month='2026-11')
+        for _ in range(3):
+            self.assertRejected(self.post(), escape(CLOSED_MONTH_MESSAGE))
+
+    def test_member_made_inactive_after_page_load_is_accepted(self):
+        # Decision 2026-10-01: the dropdown hides inactive people, but a stale form still saves.
+        self.bob.is_active = False
+        self.bob.save()
+        self.assertRedirects(self.post(), self.thanks_url)
+        self.assertEqual(Submission.objects.get().member, self.bob)
+
+    def test_past_open_month_from_a_stale_form_is_accepted(self):
+        # SPEC.md: a closed month is the only reason the server rejects a month.
+        self.assertRedirects(self.post(month='2026-09'), self.thanks_url)
+
+    def test_tampered_values_are_rejected(self):
+        self.assertRejected(self.post(member='99999'), 'Please choose your name from the list.')
+        self.assertRejected(self.post(member='abc'), 'Please choose your name from the list.')
+        self.assertRejected(self.post(month='2026-13'), 'Enter a month like 2026-11')
+        self.assertRejected(self.post(kind='maybe'), 'Select a valid choice.')
+        self.assertRejected(self.post(days=['0']), 'Select a valid choice.')
+        self.assertRejected(self.post(days=['32']), 'Select a valid choice.')
+        self.assertRejected(self.post(kind='available_all', days=['3']), 'Days can only be picked')
+        self.assertRejected(self.post(month='2027-02', days=['30']), 'February 2027 has no day 30.')
+        self.assertRejected(self.post(notes='x' * 501), 'at most 500 characters')
+
+    def test_only_get_and_post_are_allowed(self):
+        with self.assertLogs('django.request', level='WARNING'):
+            self.assertEqual(self.client.put(self.url).status_code, 405)
+
+
+class ConfirmationPageTests(TestCase):
+    """TF-10: the page shown after a successful submit."""
+
+    url = reverse('heritage_media_availability:team_form')
+    thanks_url = reverse('heritage_media_availability:thanks')
+
+    def setUp(self):
+        self.bob = Member.objects.create(first_name='Bob', last_name='Smith')
+
+    def submit(self, **overrides):
+        """Submit for Bob in October 2026 and follow the redirect to the confirmation."""
+        data = {'member': self.bob.pk, 'month': '2026-10', 'kind': 'days', 'days': [], 'notes': ''}
+        data.update(overrides)
+        with at_utc(2026, 10, 1, 12, 0):
+            return self.client.post(self.url, data, follow=True)
+
+    def test_restates_days_as_ranges_with_first_name(self):
+        response = self.submit(days=['3', '4', '5', '6', '7', '20'])
+        self.assertContains(response, 'Thanks, Bob! You&#x27;re unavailable Oct 3-7, and 20.')
+
+    def test_shows_notes_and_another_month_button(self):
+        response = self.submit(kind='available_all', notes='Can do the 12th, not the rehearsal')
+        self.assertContains(response, 'Thanks, Bob! You&#x27;re available all of October.')
+        self.assertContains(response, 'Can do the 12th, not the rehearsal')
+        self.assertContains(response, f'href="{self.url}"')
+        self.assertContains(response, 'Fill out another month')
+
+    def test_refreshing_does_not_submit_again(self):
+        self.submit(kind='unavailable_all')
+        for _ in range(2):
+            response = self.client.get(self.thanks_url)
+            self.assertContains(response, 'Thanks, Bob! You&#x27;re unavailable all of October.')
+        self.assertEqual(Submission.objects.count(), 1)
+
+    def test_opening_directly_goes_back_to_the_form(self):
+        self.assertRedirects(self.client.get(self.thanks_url), self.url)
+
+
+class FormattingTests(TestCase):
+    """Day ranges and the TF-10 confirmation sentence."""
+
+    def test_day_ranges(self):
+        self.assertEqual(day_ranges([]), [])
+        self.assertEqual(day_ranges([20]), [(20, 20)])
+        self.assertEqual(day_ranges([20, 3, 4, 5, 6, 7, 5]), [(3, 7), (20, 20)])
+        self.assertEqual(day_ranges(range(1, 31)), [(1, 30)])
+        self.assertEqual(day_ranges([1, 3, 5]), [(1, 1), (3, 3), (5, 5)])
+
+    def message(self, kind='days', days=(), month='2026-10'):
+        """The confirmation sentence for an unsaved submission by Bob."""
+        member = Member(first_name='Bob', last_name='Smith')
+        return confirmation_message(Submission(member=member, month=month, kind=kind, days=list(days)))
+
+    def test_month_is_named_once_however_many_ranges(self):
+        self.assertEqual(self.message(days=[3, 4, 5, 6, 7]), "Thanks, Bob! You're unavailable Oct 3-7.")
+        self.assertEqual(self.message(days=[20]), "Thanks, Bob! You're unavailable Oct 20.")
+        self.assertEqual(self.message(days=[3, 4, 5, 6, 7, 20]), "Thanks, Bob! You're unavailable Oct 3-7, and 20.")
+        self.assertEqual(
+            self.message(days=[3, 4, 5, 6, 7, 10, 20]), "Thanks, Bob! You're unavailable Oct 3-7, 10, and 20."
+        )
+        self.assertEqual(self.message(days=[1, 2], month='2026-09'), "Thanks, Bob! You're unavailable Sep 1-2.")
+
+    def test_all_month_wording(self):
+        self.assertEqual(self.message('available_all', month='2026-11'), "Thanks, Bob! You're available all of November.")
+        self.assertEqual(self.message('unavailable_all', month='2026-11'), "Thanks, Bob! You're unavailable all of November.")
 
 
 class MonthWeeksTests(SimpleTestCase):

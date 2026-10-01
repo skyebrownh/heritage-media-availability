@@ -4,7 +4,7 @@
   The team availability form at "/" (TF-1: no login).
   #6: name and month pickers, plus the closed-month message (TF-2 to TF-4).
   #7: all-month choice, tap-to-select calendar, and notes (TF-5 to TF-7).
-  Submit arrives in #8.
+  #8: submit, with server-side checks and plain-language messages (TF-8).
 {% endcomment %}
 
 {% block content %}
@@ -13,37 +13,71 @@
   <h1 class="text-2xl font-semibold">Heritage Media Availability</h1>
   <p class="mt-2 text-neutral-600">Let the Scheduler know which days you can't serve.</p>
 
-  <form method="post" class="mt-6 space-y-5">
+  {% comment %}
+    novalidate turns off the browser's own "Please fill out this field"
+    bubbles, which differ by browser; the server's plain-language messages
+    (TF-8) are shown instead, consistently everywhere.
+  {% endcomment %}
+  <form method="post" novalidate class="mt-6 space-y-5">
+    {# Django's protection against other websites posting to this form. #}
+    {% csrf_token %}
+
+    {% comment %}
+      TF-8: after a failed submit, list everything that needs fixing.
+      role="alert" makes screen readers read it out right away. A closed
+      month is left out: its own message box below says all that's needed.
+    {% endcomment %}
+    {% if form.errors and not form.month_closed %}
+    <div role="alert" class="rounded-xl bg-red-50 p-4 text-red-800 ring-1 ring-red-200">
+      <p class="font-semibold">Almost there! Please fix:</p>
+      <ul class="mt-2 list-disc space-y-1 pl-5">
+        {% for field in form %}{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}{% endfor %}
+        {% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
     {# TF-2: who is this? #}
     <div>
       <label for="{{ form.member.id_for_label }}" class="mb-2 block font-medium">{{ form.member.label }}</label>
       {{ form.member }}
+      {% for error in form.member.errors %}<p class="mt-2 font-medium text-red-700">{{ error }}</p>{% endfor %}
     </div>
 
     {# TF-3: which month? Closed months carry data-closed for the script below. #}
     <div>
       <label for="{{ form.month.id_for_label }}" class="mb-2 block font-medium">{{ form.month.label }}</label>
       {{ form.month }}
+      {% if not form.month_closed %}
+        {% for error in form.month.errors %}<p class="mt-2 font-medium text-red-700">{{ error }}</p>{% endfor %}
+      {% endif %}
     </div>
 
     {% comment %}
-      TF-4: message for a closed month. It starts empty (and hidden by
-      "empty:hidden"); the script fills in the text. role="status" makes
-      screen readers announce the text when it appears, which they only do
-      when a live region's content changes, hence filling it in rather than
-      just un-hiding it.
+      TF-4: where the closed-month box appears. This wrapper is always on the
+      page but usually empty; the script copies the box in from the
+      <template> below when a closed month is picked. role="status" makes
+      screen readers announce the box when it appears, which they only do
+      when a live region's content changes, hence adding the content rather
+      than just un-hiding it. If the server rejected a submit because the
+      month is closed (a stale tab), the server draws the box here instead.
     {% endcomment %}
-    <div id="closed-month-message" role="status"
-         class="rounded-xl bg-accent-50 p-4 font-medium text-accent-700 ring-1 ring-accent-200 empty:hidden"></div>
+    <div id="closed-month-message" role="status">{% if form.month_closed %}{% include "heritage_media_availability/_closed_month_box.html" %}{% endif %}</div>
+    {# The box's markup, ready for the script. A <template> is never shown on its own. #}
+    <template id="closed-month-template">{% include "heritage_media_availability/_closed_month_box.html" %}</template>
 
     {# Everything below is hidden for a closed month (TF-4). #}
-    <section id="form-details" class="space-y-5">
+    <section id="form-details" class="space-y-5"{% if form.month_closed %} hidden{% endif %}>
 
       {# TF-6: the all-month choice sits above the calendar. #}
       <div>
         <label for="{{ form.kind.id_for_label }}" class="mb-2 block font-medium">{{ form.kind.label }}</label>
         {{ form.kind }}
+        {% for error in form.kind.errors %}<p class="mt-2 font-medium text-red-700">{{ error }}</p>{% endfor %}
       </div>
+
+      {# Day problems (none picked, or a day the month doesn't have) show above the calendar. #}
+      {% for error in form.days.errors %}<p class="font-medium text-red-700">{{ error }}</p>{% endfor %}
 
       {# Shown until a month is picked, since the calendar depends on the month. #}
       <p id="calendar-hint" class="rounded-xl bg-neutral-100 p-4 text-neutral-600">Choose a month to see its calendar.</p>
@@ -82,8 +116,10 @@
             {% for day in week %}
               {% if day %}
               <div>
+                {# "checked" re-ticks days after a failed submit, so nothing has to be redone. #}
                 <input type="checkbox" name="days" value="{{ day.day }}"
-                       id="day-{{ calendar.month }}-{{ day.day }}" class="peer sr-only">
+                       id="day-{{ calendar.month }}-{{ day.day }}" class="peer sr-only"
+                       {% if day.day in calendar.checked %}checked{% endif %}>
                 {% comment %}
                   peer-checked: styles the square when its checkbox is ticked:
                   pastel blue plus a checkmark, so "selected" isn't shown by
@@ -118,7 +154,14 @@
         {{ form.notes }}
         {# The id matches the aria-describedby Django adds to the box, so screen readers read this hint too. #}
         <p id="{{ form.notes.auto_id }}_helptext" class="mt-2 text-sm text-neutral-600">{{ form.notes.help_text }}</p>
+        {% for error in form.notes.errors %}<p class="mt-2 font-medium text-red-700">{{ error }}</p>{% endfor %}
       </div>
+
+      {# Send it. Full width and 48px tall, an easy target on a phone. #}
+      <button type="submit"
+              class="flex min-h-12 w-full items-center justify-center rounded-xl bg-accent-700 px-4 py-3 text-lg font-semibold text-white hover:opacity-90 focus:outline-none focus:ring-4 focus:ring-accent-200">
+        Submit
+      </button>
     </section>
   </form>
 </div>
@@ -126,18 +169,18 @@
 <script>
   /*
    * Page behavior for the team form. Everything here is for a friendly
-   * experience only; the server re-checks every rule on submit (#8).
+   * experience only; the server re-checks every rule on submit (TF-8).
    *
-   * - TF-4: a closed month hides the details and shows the "finalized" message.
+   * - TF-4: a closed month hides the details and shows the "finalized" box.
    * - TF-5: only the chosen month's calendar is shown and enabled.
    * - TF-6: an all-month option clears and disables the calendar;
    *   "Pick specific days" re-enables it.
    */
   (function () {
-    const CLOSED_MESSAGE = "This month's schedule is finalized. Please text Skye with any changes.";
     const monthSelect = document.getElementById('{{ form.month.id_for_label }}');
     const kindSelect = document.getElementById('{{ form.kind.id_for_label }}');
     const message = document.getElementById('closed-month-message');
+    const closedBox = document.getElementById('closed-month-template');
     const details = document.getElementById('form-details');
     const hint = document.getElementById('calendar-hint');
     const calendars = document.querySelectorAll('fieldset[data-month]');
@@ -170,30 +213,50 @@
       calendar.querySelector('[data-kind-note]').hidden = pickingDays;
     }
 
-    /**
-     * Month changed: show the closed message or the details (TF-4), then
-     * show only that month's calendar (TF-5). Ticks are cleared on every
-     * switch, so what's on screen is exactly what will be sent.
-     */
-    function updateForMonth() {
+    /** True if the month picked in the dropdown is marked closed. */
+    function chosenMonthIsClosed() {
       const chosen = monthSelect.selectedOptions[0];
-      const isClosed = Boolean(chosen && chosen.hasAttribute('data-closed'));
-      message.textContent = isClosed ? CLOSED_MESSAGE : '';
-      details.hidden = isClosed;
+      return Boolean(chosen && chosen.hasAttribute('data-closed'));
+    }
 
+    /** TF-4: show the closed box and hide the details, or the reverse. */
+    function showClosed(isClosed) {
+      if (isClosed) {
+        message.replaceChildren(closedBox.content.cloneNode(true));
+      } else {
+        message.replaceChildren();
+      }
+      details.hidden = isClosed;
+    }
+
+    /**
+     * TF-5: show only the chosen month's calendar. With clear=true (the
+     * person changed months), untick everything, so what's on screen is
+     * exactly what will be sent. On page load, clear=false keeps days the
+     * server re-ticked after a failed submit.
+     */
+    function showCalendarFor(clear) {
       calendars.forEach(function (calendar) {
         calendar.hidden = calendar.dataset.month !== monthSelect.value;
         calendar.disabled = true;
-        clearDays(calendar);
+        if (clear) clearDays(calendar);
       });
       hint.hidden = Boolean(monthSelect.value);
       applyKind();
     }
 
-    monthSelect.addEventListener('change', updateForMonth);
+    monthSelect.addEventListener('change', function () {
+      showClosed(chosenMonthIsClosed());
+      showCalendarFor(true);
+    });
     kindSelect.addEventListener('change', applyKind);
-    // Also run once on load: some browsers restore the last choices on Back.
-    updateForMonth();
+
+    // On page load, set everything up for the current choices. The server
+    // may already have shown the closed message (a stale tab's submit was
+    // rejected), so keep it if so.
+    const serverSaidClosed = message.children.length > 0;
+    showClosed(chosenMonthIsClosed() || serverSaidClosed);
+    showCalendarFor(false);
   })();
 </script>
 {% endblock %}

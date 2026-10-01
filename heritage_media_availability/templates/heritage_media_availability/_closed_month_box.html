@@ -1,0 +1,10 @@
+{% comment %}
+  TF-4: the closed-month box. Used in two places in team_form.html: drawn by
+  the server when a stale form's submit is rejected, and copied in by the
+  page script when a closed month is picked. One snippet keeps them identical.
+  The hint line gives people a way forward instead of a dead end.
+{% endcomment %}
+<div class="rounded-xl bg-accent-50 p-4 text-accent-700 ring-1 ring-accent-200">
+  <p class="font-medium">{{ closed_month_message }}</p>
+  <p class="mt-1">You can choose a different month above.</p>
+</div>
