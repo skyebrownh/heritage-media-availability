@@ -59,7 +59,7 @@ IDs let you reference each requirement when prompting an AI coding tool or testi
 | ID    | Requirement                                                                                                                                                                                                                                                                 |
 | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | TF-1  | The form lives at one public link with no account or password.                                                                                                                                                                                                              |
-| TF-2  | The user picks their name from a dropdown of active roster members, sorted A–Z.                                                                                                                                                                                             |
+| TF-2  | The user picks their name from a dropdown of active roster members, shown as "First Last" and sorted A–Z by first name (then last name).                                                                                                                                    |
 | TF-3  | The user picks a month from the current month through 6 months ahead. Closed months show a "(closed)" label. Past months are never offered, even if reopened.                                                                                                               |
 | TF-4  | Picking a closed month hides the form and shows: "This month's schedule is finalized. Please text Skye with any changes."                                                                                                                                                   |
 | TF-5  | An open month shows a calendar of every day in that month. Tapping a day toggles it unavailable; tap targets are at least 44 px.                                                                                                                                            |
@@ -67,7 +67,7 @@ IDs let you reference each requirement when prompting an AI coding tool or testi
 | TF-7  | An optional notes field accepts up to 500 characters.                                                                                                                                                                                                                       |
 | TF-8  | Submit requires a name, a month, and either at least one day or an all-month option. Missing pieces get a plain-language message.                                                                                                                                           |
 | TF-9  | If the person already submitted for that month, the form pre-fills with it. A read-only summary of that earlier submission stays visible above the calendar as a reference while they edit, e.g. "Your last submission (Oct 2): Oct 3–7, 20. Submitting again replaces it." |
-| TF-10 | After submitting, a confirmation restates what was saved (e.g. "Thanks, Bob! You're unavailable Oct 3–7 and Oct 20.") with a button to fill out another month.                                                                                                              |
+| TF-10 | After submitting, a confirmation restates what was saved (e.g. "Thanks, Bob! You're unavailable Oct 3–7 and Oct 20.", greeting by first name) with a button to fill out another month.                                                                                                              |
 | TF-11 | Nice-to-have: the device remembers the last name selected so returning users skip the dropdown.                                                                                                                                                                             |
 
 ### Admin
@@ -75,7 +75,7 @@ IDs let you reference each requirement when prompting an AI coding tool or testi
 | ID   | Requirement                                                                                                                                                                                     |
 | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | AD-1 | The admin area sits at a separate path behind Django's admin login (one superuser account, Skye). The login lasts about 30 days per device.                                                      |
-| AD-2 | Roster: add a name, edit a name, toggle active or inactive. Names are unique regardless of capitalization. Inactive people leave the dropdown and tracker, but their past submissions stay. No hard delete in v1. |
+| AD-2 | Roster: add a person (first and last name, both required), edit their name, toggle active or inactive. The first + last name pair is unique regardless of capitalization. Inactive people leave the dropdown and tracker, but their past submissions stay. No hard delete in v1. |
 | AD-3 | A month selector covers past months (read-only reference) through 6 months ahead.                                                                                                               |
 | AD-4 | The response tracker lists every active member as Responded or Not responded, with the last-submitted time and a count like "12 of 17 responded."                                               |
 | AD-5 | The by-person view lists each member's unavailable days in compact ranges, any all-month choice, and their notes.                                                                               |
@@ -83,9 +83,13 @@ IDs let you reference each requirement when prompting an AI coding tool or testi
 | AD-7 | The by-person and by-date views each have a copy button that copies their text format below to the clipboard.                                                                                   |
 | AD-8 | Close month and Reopen month happen in Django admin, for any month including past ones. Closing asks for confirmation. Nothing closes automatically; Skye closes months by hand.               |
 
+### Names in admin views and copy output
+
+The tracker, by-person and by-date views, and both copy formats show each person's **display name**: their first name only, plus their last initial when another active member shares that first name (ignoring capitalization), e.g. "Bob J." and "Bob S.". Lists are sorted A–Z by first name, then last name.
+
 ### Copy formats
 
-**By person:** one line per active member. Responders come first, A–Z, then non-responders, also A–Z. Consecutive days collapse into ranges, and "NA" means available all month.
+**By person:** one line per active member, by display name. Responders come first, A–Z by first name, then non-responders, also A–Z by first name. Consecutive days collapse into ranges, and "NA" means available all month.
 
 ```
 Bob: 3-7, 20
@@ -96,7 +100,7 @@ Sam: unavailable all month
 Tom: no response
 ```
 
-**By date:** one line per day that has anyone out, in date order with names A–Z. Days with nobody out are skipped. People unavailable all month appear once on the first line instead of on every day. The start of the output for the same responses:
+**By date:** one line per day that has anyone out, in date order with display names A–Z by first name. Days with nobody out are skipped. People unavailable all month appear once on the first line instead of on every day. The start of the output for the same responses:
 
 ```
 Unavailable all month: Sam
@@ -143,12 +147,13 @@ Three tables cover v1. Keeping every submission, and reading the newest per pers
 
 ### members
 
-| Field        | Type      | Notes                                                                  |
-| ------------ | --------- | ---------------------------------------------------------------------- |
-| id           | integer   | Primary key                                                            |
-| name         | text      | Unique regardless of capitalization ("bob" = "Bob"); shown in the dropdown |
-| is\_active   | boolean   | Default true                                                           |
-| created\_at  | timestamp |                                                                        |
+| Field        | Type      | Notes                                                                                   |
+| ------------ | --------- | --------------------------------------------------------------------------------------- |
+| id           | integer   | Primary key                                                                             |
+| first\_name  | text      | Required                                                                                |
+| last\_name   | text      | Required. The (first\_name, last\_name) pair is unique regardless of capitalization ("bob smith" = "Bob Smith") |
+| is\_active   | boolean   | Default true                                                                            |
+| created\_at  | timestamp |                                                                                         |
 
 ### submissions
 

@@ -93,13 +93,16 @@ All commands load local settings from `.env` (copy `.env.example` first).
 - Run locally: `uv run --env-file .env python manage.py runserver` → http://127.0.0.1:8000/
 - Run tests: `uv run --env-file .env python manage.py test`
 - Apply database migrations: `uv run --env-file .env python manage.py migrate`
-- Create admin user: *TBD (Step 3)*
+- Create admin user (local): `uv run --env-file .env python manage.py createsuperuser`
+- Create admin user (Railway): `railway ssh`, then `python manage.py createsuperuser` (or `changepassword <username>` to reset), then `exit`
+- Make migrations after changing models: `uv run --env-file .env python manage.py makemigrations`
 - Production readiness check: `DEBUG=false uv run --env-file .env python manage.py check --deploy` (should report no issues)
 
 Deploying: pushing/merging to `main` deploys on Railway. `railway.json` (JSON, so it can't hold comments) tells Railway to:
 - build with Railpack, which installs exactly what's in `uv.lock` and uses `.python-version`;
 - run `python manage.py migrate` before each deploy (a failed migration cancels the deploy, and the old version keeps running);
-- start with `collectstatic` then `gunicorn config.wsgi` (gunicorn options live in `gunicorn.conf.py`).
+- start with `migrate --check` (fails the deploy if any migration wasn't applied), then `collectstatic`, then `gunicorn config.wsgi` (gunicorn options live in `gunicorn.conf.py`).
+- Note (2026-10-01): the first deploy skipped the file's pre-deploy migrate, so the same command is also set in the dashboard (Settings → Deploy → Pre-deploy Command). Root cause still being checked.
 
 ### Decisions
 
@@ -114,9 +117,12 @@ Deploying: pushing/merging to `main` deploys on Railway. `railway.json` (JSON, s
 - 2026-09-29: Approved packages: django, psycopg[binary], gunicorn, whitenoise. `DATABASE_URL` is parsed with the standard library (no dj-database-url); local `.env` is loaded with `uv run --env-file .env` (no python-dotenv).
 - 2026-09-28: `Submission.days` uses Postgres `ArrayField` (django.contrib.postgres).
 - 2026-09-28: TF-9 pre-fill loads the earlier submission with a small JS fetch, with no page reload.
-- 2026-09-28: Member names are unique regardless of capitalization ("bob" and "Bob" count as duplicates).
+- 2026-10-01: Members have required `first_name` and `last_name` (replaces the single `name` field). The (first, last) pair is unique regardless of capitalization ("bob smith" = "Bob Smith").
+- 2026-10-01: Team dropdown (TF-2) shows "First Last", sorted by first name, then last name. TF-10 greets by first name.
+- 2026-10-01: Admin views and copy output use a display name: first name only, plus last initial when another *active* member shares the first name ("Bob J.", "Bob S."). Tracker and copy sort A–Z by first name, then last name.
 - 2026-09-28: By-person copy lists responders A–Z, then non-responders A–Z.
 - 2026-09-28: TF-6 all-month choice is a dropdown (specific days / available all month / unavailable all month) instead of toggles.
 - 2026-09-30: Static files use WhiteNoise's `CompressedStaticFilesStorage` (no filename hashing), so tests don't need `collectstatic` first. Only admin files are static; Tailwind comes from the CDN.
 - 2026-09-30: `check --deploy` warnings silenced on purpose: mail.E001 (v1 sends no email), security.W005/W021 (HSTS subdomains/preload; we don't own railway.app). Revisit if we add a custom domain.
+- 2026-10-01: To do before 2026-12-01: Railway stops reading `railway.json` (Config as Code) on that date in favor of Infrastructure as Code (`.railway/railway.ts`, which needs a Node package; a Python version is in beta). Decide after launch whether to migrate or move the commands into the Railway dashboard.
 - 2026-09-28: To review later: weekly database backups (NFR). Check what Railway Hobby provides when we reach deployment hardening.

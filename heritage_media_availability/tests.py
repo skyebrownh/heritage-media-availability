@@ -10,11 +10,16 @@ import runpy
 from pathlib import Path
 from unittest import mock
 
-from django.core.exceptions import ImproperlyConfigured
+from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.core.exceptions import ImproperlyConfigured, ValidationError
+from django.db import IntegrityError, transaction
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from config.env import env_bool, env_list, env_required, parse_database_url
+
+from .models import Member
 
 
 class HomePageTests(TestCase):
@@ -123,3 +128,107 @@ class ProductionSettingsTests(SimpleTestCase):
         settings = self.load_settings(DEBUG='true')
         self.assertFalse(settings['SECURE_SSL_REDIRECT'])
         self.assertEqual(settings['SECURE_HSTS_SECONDS'], 0)
+
+
+class MemberModelTests(TestCase):
+    """The roster's data rules (AD-2), enforced by the model and the database."""
+
+    def test_new_members_start_active(self):
+        member = Member.objects.create(first_name='Bob', last_name='Smith')
+        self.assertTrue(member.is_active)
+
+    def test_str_is_full_name(self):
+        self.assertEqual(str(Member(first_name='Bob', last_name='Smith')), 'Bob Smith')
+
+    def test_both_names_required(self):
+        with self.assertRaises(ValidationError) as caught:
+            Member(first_name='', last_name='').full_clean()
+        self.assertIn('first_name', caught.exception.message_dict)
+        self.assertIn('last_name', caught.exception.message_dict)
+
+    def test_database_rejects_same_name_with_different_capitalization(self):
+        Member.objects.create(first_name='Bob', last_name='Smith')
+        # atomic() keeps the failed insert from breaking the rest of the test's transaction.
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Member.objects.create(first_name='bob', last_name='SMITH')
+
+    def test_validation_gives_friendly_message_for_duplicates(self):
+        Member.objects.create(first_name='Bob', last_name='Smith')
+        with self.assertRaises(ValidationError) as caught:
+            Member(first_name='BOB', last_name='smith').full_clean()
+        self.assertIn('already on the roster', str(caught.exception))
+
+    def test_same_first_name_different_last_name_is_allowed(self):
+        Member.objects.create(first_name='Bob', last_name='Smith')
+        Member.objects.create(first_name='Bob', last_name='Jones')
+        self.assertEqual(Member.objects.count(), 2)
+
+    def test_sorted_by_first_name_then_last_ignoring_case(self):
+        for first, last in [('jane', 'Doe'), ('Bob', 'Smith'), ('Bob', 'Jones'), ('Amy', 'Zed')]:
+            Member.objects.create(first_name=first, last_name=last)
+        self.assertEqual(
+            [str(m) for m in Member.objects.all()],
+            ['Amy Zed', 'Bob Jones', 'Bob Smith', 'jane Doe'],
+        )
+
+
+class RosterAdminTests(TestCase):
+    """Skye's roster screens in Django admin (AD-1, AD-2)."""
+
+    def setUp(self):
+        self.admin_user = get_user_model().objects.create_superuser('skye', password='test-pass-123')
+        self.client.force_login(self.admin_user)
+        self.member = Member.objects.create(first_name='Bob', last_name='Smith')
+
+    def test_admin_requires_login(self):
+        self.client.logout()
+        response = self.client.get(reverse('admin:heritage_media_availability_member_changelist'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('admin:login'), response['Location'])
+
+    def test_roster_list_shows_members(self):
+        response = self.client.get(reverse('admin:heritage_media_availability_member_changelist'))
+        self.assertContains(response, 'Bob')
+        self.assertContains(response, 'Heritage Media Admin')
+
+    def test_add_form_rejects_duplicate_with_friendly_message(self):
+        response = self.client.post(
+            reverse('admin:heritage_media_availability_member_add'),
+            {'first_name': 'bob', 'last_name': 'smith', 'is_active': 'on'},
+        )
+        # 200 means the form came back with an error instead of saving (a save redirects).
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'already on the roster')
+        self.assertEqual(Member.objects.count(), 1)
+
+    def test_can_mark_member_inactive(self):
+        response = self.client.post(
+            reverse('admin:heritage_media_availability_member_change', args=[self.member.pk]),
+            {'first_name': 'Bob', 'last_name': 'Smith'},  # unticked checkbox = not sent = inactive
+        )
+        self.assertEqual(response.status_code, 302)
+        self.member.refresh_from_db()
+        self.assertFalse(self.member.is_active)
+
+    def test_delete_is_blocked(self):
+        # AD-2: no hard delete, even for the superuser.
+        # Django logs every 403 as a warning; assertLogs captures it so the
+        # expected traceback doesn't clutter the test output.
+        with self.assertLogs('django.request', level='WARNING'):
+            response = self.client.post(
+                reverse('admin:heritage_media_availability_member_delete', args=[self.member.pk]),
+                {'post': 'yes'},
+            )
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(Member.objects.filter(pk=self.member.pk).exists())
+
+    def test_bulk_delete_action_is_not_offered(self):
+        response = self.client.get(reverse('admin:heritage_media_availability_member_changelist'))
+        self.assertNotContains(response, 'delete_selected')
+
+
+class SessionLengthTests(SimpleTestCase):
+    """AD-1: the admin login lasts about 30 days."""
+
+    def test_session_lasts_30_days(self):
+        self.assertEqual(settings.SESSION_COOKIE_AGE, 60 * 60 * 24 * 30)

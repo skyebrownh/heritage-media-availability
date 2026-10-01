@@ -161,6 +161,11 @@ STORAGES = {
 }
 
 
+# Login sessions
+# AD-1: Skye stays logged in for about 30 days per device (Django's default is 2 weeks).
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 30
+
+
 # HTTPS and production hardening
 # https://docs.djangoproject.com/en/6.1/ref/settings/#secure-proxy-ssl-header
 
