@@ -1,0 +1,35 @@
+{% extends "admin/base_site.html" %}
+{% load admin_urls %}
+
+{% comment %}
+  AD-8: "Closing asks for confirmation."
+  Shown after Skye presses Save on "Add closed month". Nothing is saved yet.
+  "Yes, close it" posts the month back with a hidden "confirm" field, which
+  tells ClosedMonthAdmin.add_view to save for real. Styled with Django admin's
+  own classes so it looks like the built-in delete confirmation.
+{% endcomment %}
+
+{# Breadcrumb trail at the top, matching other admin pages. #}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+  &rsaquo; <a href="{% url opts|admin_urlname:'changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+  &rsaquo; Close {{ month_label }}
+</div>
+{% endblock %}
+
+{% block content %}
+<p>The team won't be able to submit for <strong>{{ month_label }}</strong> until you reopen it.</p>
+
+<form method="post">
+  {% csrf_token %}
+  {# The month chosen on the previous page, carried through unchanged. #}
+  <input type="hidden" name="month" value="{{ month }}">
+  <input type="hidden" name="confirm" value="yes">
+  <div>
+    <input type="submit" value="Yes, close it">
+    <a href="{% url opts|admin_urlname:'changelist' %}" class="button cancel-link">Cancel</a>
+  </div>
+</form>
+{% endblock %}
