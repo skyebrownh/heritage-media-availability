@@ -52,36 +52,36 @@ v1 covers collecting and viewing whole-day availability. Anything that assigns p
 
 ## Functional requirements
 
-IDs let you reference each requirement when prompting an AI coding tool or testing the pilot.
+IDs let you reference each requirement when prompting an AI coding tool or testing the pilot. Build status for each requirement lives in GitHub Issues, not here.
 
 ### Team form
 
-| ID    | Requirement                                                                                                                                                                                                                                                                 |
-| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| TF-1  | The form lives at one public link with no account or password.                                                                                                                                                                                                              |
-| TF-2  | The user picks their name from a dropdown of active roster members, shown as "First Last" and sorted A–Z by first name (then last name).                                                                                                                                    |
-| TF-3  | The user picks a month from the current month through 6 months ahead. Closed months show a "(closed)" label. Past months are never offered, even if reopened.                                                                                                               |
-| TF-4  | Picking a closed month hides the form and shows: "This month's schedule is finalized. Please text Skye with any changes."                                                                                                                                                   |
-| TF-5  | An open month shows a calendar of every day in that month. Tapping a day toggles it unavailable; tap targets are at least 44 px.                                                                                                                                            |
-| TF-6  | Above the calendar, a dropdown offers "Pick specific days" (default), "I'm available all month", and "I'm unavailable all month". Choosing either all-month option clears and disables the calendar; switching back to "Pick specific days" re-enables it.                  |
-| TF-7  | An optional notes field accepts up to 500 characters.                                                                                                                                                                                                                       |
-| TF-8  | Submit requires a name, a month, and either at least one day or an all-month option. Missing pieces get a plain-language message.                                                                                                                                           |
-| TF-9  | If the person already submitted for that month, the form pre-fills with it. A read-only summary of that earlier submission stays visible above the calendar as a reference while they edit, e.g. "Your last submission (Oct 2): Oct 3–7, 20. Submitting again replaces it." |
-| TF-10 | After submitting, a confirmation restates what was saved (e.g. "Thanks, Bob! You're unavailable Oct 3–7 and Oct 20.", greeting by first name) with a button to fill out another month.                                                                                                              |
-| TF-11 | Nice-to-have: the device remembers the last name selected so returning users skip the dropdown.                                                                                                                                                                             |
+| ID | Requirement |
+| --- | --- |
+| TF-1 | The form lives at one public link with no account or password. |
+| TF-2 | The user picks their name from a dropdown of active roster members, shown as "First Last" and sorted A–Z by first name (then last name). |
+| TF-3 | The user picks a month from the current month through 6 months ahead. Closed months show a "(closed)" label. Past months are never offered, even if reopened. |
+| TF-4 | Picking a closed month hides the form and shows: "This month's schedule is finalized. Please text Skye with any changes." |
+| TF-5 | An open month shows a calendar of every day in that month. Tapping a day toggles it unavailable; tap targets are at least 44 px. |
+| TF-6 | Above the calendar, a dropdown offers "Pick specific days" (default), "I'm available all month", and "I'm unavailable all month". Choosing either all-month option clears and disables the calendar; switching back to "Pick specific days" re-enables it. |
+| TF-7 | An optional notes field accepts up to 500 characters. |
+| TF-8 | Submit requires a name, a month, and either at least one day or an all-month option. Missing pieces get a plain-language message. |
+| TF-9 | If the person already submitted for that month, the form pre-fills with it. A read-only summary of that earlier submission stays visible above the calendar as a reference while they edit, e.g. "Your last submission (Oct 2): Oct 3–7, 20. Submitting again replaces it." |
+| TF-10 | After submitting, a confirmation restates what was saved (e.g. "Thanks, Bob! You're unavailable Oct 3–7 and Oct 20.", greeting by first name) with a button to fill out another month. |
+| TF-11 | Nice-to-have: the device remembers the last name selected so returning users skip the dropdown. |
 
 ### Admin
 
-| ID   | Requirement                                                                                                                                                                                     |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AD-1 | The admin area sits at a separate path behind Django's admin login (one superuser account, Skye). The login lasts about 30 days per device.                                                      |
+| ID | Requirement |
+| --- | --- |
+| AD-1 | The admin area sits at a separate path behind Django's admin login (one superuser account, Skye). The login lasts about 30 days per device. |
 | AD-2 | Roster: add a person (first and last name, both required), edit their name, toggle active or inactive. The first + last name pair is unique regardless of capitalization. Inactive people leave the dropdown and tracker, but their past submissions stay. No hard delete in v1. |
-| AD-3 | A month selector covers past months (read-only reference) through 6 months ahead.                                                                                                               |
-| AD-4 | The response tracker lists every active member as Responded or Not responded, with the last-submitted time and a count like "12 of 17 responded."                                               |
-| AD-5 | The by-person view lists each member's unavailable days in compact ranges, any all-month choice, and their notes.                                                                               |
+| AD-3 | A month selector covers past months (read-only reference) through 6 months ahead. |
+| AD-4 | The response tracker lists every active member as Responded or Not responded, with the last-submitted time and a count like "12 of 17 responded." |
+| AD-5 | The by-person view lists each member's unavailable days in compact ranges, any all-month choice, and their notes. |
 | AD-6 | The by-date view lists each day of the month that has anyone unavailable, with who's out. Days with nobody out are skipped, matching the copy text below. People marked "unavailable all month" are not repeated on each day; they're listed once in a note at the top of the view. |
-| AD-7 | The by-person and by-date views each have a copy button that copies their text format below to the clipboard.                                                                                   |
-| AD-8 | Close month and Reopen month happen in Django admin, for any month including past ones. Closing asks for confirmation. Nothing closes automatically; Skye closes months by hand.               |
+| AD-7 | The by-person and by-date views each have a copy button that copies their text format below to the clipboard. |
+| AD-8 | Close month and Reopen month happen in Django admin, for any month including past ones. Closing asks for confirmation. Nothing closes automatically; Skye closes months by hand. |
 
 ### Names in admin views and copy output
 
@@ -216,7 +216,7 @@ The form launches October 25, the day November availability requests normally go
 Three build weeks and a pilot week before launch (2026):
 
 | Week | Dates | Focus |
-| --- | --- | --- |
+| --- | --- |
 | 1 | Sep 28 – Oct 4 | Setup, roster, deploy |
 | 2 | Oct 5 – Oct 11 | Build the team form |
 | 3 | Oct 12 – Oct 18 | Build admin views |
@@ -235,3 +235,9 @@ Week 1 gets a bare app deployed early, so hosting surprises show up before the r
 ### Open questions
 
 None for v1. Copy labels, non-responders, the by-date copy button, the launch date, the app name, and the accent color are settled in the sections above.
+
+## Decisions
+
+Spec decisions that aren't captured in a requirement above, with the date they were made. Decisions that change a requirement are made by editing that requirement directly.
+
+- 2026-09-28: TF-9 pre-fill loads the earlier submission with a small JavaScript fetch, so picking a name and month doesn't reload the page.
