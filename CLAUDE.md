@@ -2,7 +2,7 @@
 
 ## Heritage Media Availability Form
 
-A small web app where Heritage church media team members submit the days they're unavailable each month, and the admin (Skye) views all responses. **SPEC.md is the source of truth.** Read it before starting any task, and cite requirement IDs (TF-#, AD-#) in plans and summaries.
+A small web app where Heritage church media team members submit the days they're unavailable each month, and the admin (Skye) views all responses. **SPEC.md is the source of truth** for what the app does and why (requirements, business rules, data model). **GitHub Issues** hold the work: each issue is one unit to build, with a directive and acceptance criteria. Read SPEC.md and the issue before starting any task, and cite requirement IDs (TF-#, AD-#) and the issue number (#N) in plans and summaries.
 
 This app only collects and displays availability. It never schedules anyone.
 
@@ -16,11 +16,21 @@ This app only collects and displays availability. It never schedules anyone.
 
 ### How we work
 
-1. **Plan first.** For every task, show a short plan (files to create or change, and why) and wait for my approval before writing code.
-2. **Small steps.** Build one requirement or a small group of related ones at a time. Never build ahead of the current step.
-3. **Tell me how to test.** After each step, give me exact manual test steps (what to click, what I should see) and run the automated tests.
-4. **Dependencies.** Ask before adding any package. Prefer the standard library and Django built-ins.
-5. **Keep docs current.** Spec decisions (what the app does) go in SPEC.md: update the requirement itself, and log the decision with a date in SPEC.md's Decisions section. This file holds only conventions, standards, and architectural context; update it when those change or when we add a command.
+Every piece of work follows this loop. `gh` (GitHub CLI) is installed and authenticated for the repo.
+
+1. **Draft the issue.** You draft it in chat using the matching template in `.github/ISSUE_TEMPLATE/` (feature or bug). I approve or edit it. Then you create it with `gh issue create`, with a milestone and area label.
+2. **Plan.** Before writing code, show a short plan (files to create or change, and why) and wait for my approval. Once approved, post the plan as a comment on the issue (`gh issue comment`) so the reasoning stays with the work.
+3. **Build in small steps.** One issue = one requirement or a small group of related ones = one branch = one PR. Never build ahead of the current issue; anything else becomes a new issue.
+4. **Tell me how to test.** When the work is done, run the automated tests and give me exact manual test steps (what to click, what I should see), mapped to the issue's acceptance criteria.
+5. **Dependencies.** Ask before adding any package. Prefer the standard library and Django built-ins.
+6. **Keep docs current.** If a decision changes what the app does, update the requirement in SPEC.md in the same PR. Decisions that don't fit any requirement get a dated entry in SPEC.md's Decisions section. Discussion and context live in the issue. This file holds only conventions, standards, and architectural context; update it when those change or when we add a command.
+
+### Issues, milestones and labels
+
+- **Milestones** are the build weeks ("Week 2: Team form", "Week 3: Admin views", "Week 4: Pilot") plus "Post-launch". Every issue gets one.
+- **Area labels:** `team-form`, `admin`, `infra`, `documentation`. Type labels: `feature`, `bug`, `accessibility`.
+- An issue's **acceptance criteria** are a checklist of things you can see or a test can check. Tick them in the PR, not the issue.
+- Status lives in GitHub (open/closed issues, milestone progress), never in the docs.
 
 ### Code comments
 
@@ -41,10 +51,23 @@ Write good explanatory comments throughout. I'll be reading this code to learn f
 
 ### Git workflow
 
-- The local repo is the working copy. GitHub (`origin`) is the upstream. Railway deploys automatically from `main`.
-- Work on a short-lived branch per step (e.g. `week1-models`), never directly on `main`.
-- When a step works and tests pass, suggest a commit message. Only commit, push, or merge when I say so.
-- Merging to `main` means deploying. Remind me of that before any merge.
+- The local repo is the working copy. GitHub (`origin`) is the upstream. **Railway deploys automatically from `main`, so merging to `main` is deploying.**
+- Branch per issue from an up-to-date `main`, named `<issue#>-<short-slug>` (e.g. `12-closed-month-admin`). Never commit directly to `main`.
+- Leave changes uncommitted until I've reviewed them in my editor. When the work is ready, suggest a commit message and wait for my OK before committing.
+- Open a PR with `gh pr create` using `.github/pull_request_template.md`. The description must include `Closes #<issue>` so merging closes the issue.
+- PRs are **squash merged**: each PR becomes one commit on `main`, titled after the issue.
+
+**What you may do on your own:**
+- Create issues I've approved
+- Push feature branches and open PRs, once I've approved the commits on them (none of these deploy)
+- Comment on issues and PRs
+
+**Only with my explicit approval:**
+- Committing (I review uncommitted changes first)
+- Merging a PR (this deploys). Remind me of that before asking.
+- Pushing to `main` by any route
+- Closing an issue any way other than merging its PR
+- Changing repo settings, deleting branches on GitHub, or editing milestones and labels beyond adding new ones I've agreed to
 
 ### Stack (do not change without asking)
 
@@ -90,8 +113,6 @@ Write good explanatory comments throughout. I'll be reading this code to learn f
 
 ### Commands
 
-\<!-- Fill in as the project is set up. -->
-
 All commands load local settings from `.env` (copy `.env.example` first).
 
 - Run locally: `uv run --env-file .env python manage.py runserver` → http://127.0.0.1:8000/
@@ -100,11 +121,13 @@ All commands load local settings from `.env` (copy `.env.example` first).
 - Create admin user (local): `uv run --env-file .env python manage.py createsuperuser`
 - Create admin user (Railway): `railway ssh`, then `python manage.py createsuperuser` (or `changepassword <username>` to reset), then `exit`
 - Make migrations after changing models: `uv run --env-file .env python manage.py makemigrations`
+- Create an issue: `gh issue create --template <feature.md|bug.md>` (or `--title`/`--body-file` with `--milestone` and `--label`)
+- Open a PR: `gh pr create --fill` then edit, or `--title`/`--body-file`
 - Production readiness check: `DEBUG=false uv run --env-file .env python manage.py check --deploy` (should report no issues)
 
 Deploying: pushing/merging to `main` deploys on Railway. `railway.json` (JSON, so it can't hold comments) tells Railway to:
 - build with Railpack, which installs exactly what's in `uv.lock` and uses `.python-version`;
 - run `python manage.py migrate` before each deploy (a failed migration cancels the deploy, and the old version keeps running);
 - start with `migrate --check` (fails the deploy if any migration wasn't applied), then `collectstatic`, then `gunicorn config.wsgi` (gunicorn options live in `gunicorn.conf.py`).
-- Note (2026-10-01): the first deploy skipped the file's pre-deploy migrate, so the same command is also set in the dashboard (Settings → Deploy → Pre-deploy Command). Root cause still being checked.
-- To do before 2026-12-01: Railway stops reading `railway.json` (Config as Code) on that date in favor of Infrastructure as Code (`.railway/railway.ts`, which needs a Node package; a Python version is in beta). Decide after launch whether to migrate or move these commands into the Railway dashboard.
+- The pre-deploy command is also set in the Railway dashboard (Settings → Deploy → Pre-deploy Command), because the first deploy didn't pick it up from `railway.json`.
+- `railway.json` stops being read on 2026-12-01; the migration is tracked as a Post-launch issue.

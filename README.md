@@ -7,18 +7,17 @@ It replaces the monthly group-chat thread. The app only **collects and displays*
 - **Team side:** one shared link with no login. Pick your name and a month, tap the days you're out (or choose "available/unavailable all month"), and submit. A new submission replaces your old one.
 - **Admin side:** a password-protected roster, a tracker of who has responded, by-person and by-date views with copy buttons, and closing/reopening months.
 
-See [SPEC.md](SPEC.md) for the full requirements (with IDs like TF-3 and AD-2, their status, and a decision log) and [CLAUDE.md](CLAUDE.md) for working conventions and architecture notes.
+See [SPEC.md](SPEC.md) for the full requirements (with IDs like TF-3 and AD-2, plus a decision log) and [CLAUDE.md](CLAUDE.md) for working conventions and architecture notes. Work is tracked in [GitHub Issues](../../issues), grouped by [milestone](../../milestones).
 
 ## Status
 
-v1 is in development, with launch to the full team planned for **October 25, 2026**.
+v1 is in development, with launch to the full team planned for **October 25, 2026**. Week 1 (setup, roster, deploy) is done. Progress on the rest is tracked by [milestone](../../milestones): Week 2 (team form), Week 3 (admin views), Week 4 (pilot), and Post-launch.
 
-| Week | Dates | Focus | Status |
-| --- | --- | --- | --- |
-| 1 | Sep 28 – Oct 4 | Setup, roster, deploy | ✅ Done |
-| 2 | Oct 5 – Oct 11 | Team form | Up next |
-| 3 | Oct 12 – Oct 18 | Admin views | |
-| 4 | Oct 19 – Oct 24 | Pilot with 3–5 people | |
+## How work happens
+
+1. Each unit of work is a GitHub issue with a directive and acceptance criteria (templates in `.github/ISSUE_TEMPLATE/`).
+2. Work happens on a branch named `<issue#>-<short-slug>`.
+3. A pull request with `Closes #<issue>` is **squash merged** into `main`, which closes the issue and deploys.
 
 ## Tech stack
 
@@ -117,4 +116,4 @@ python manage.py createsuperuser     # or: python manage.py changepassword <user
 exit
 ```
 
-> **Note:** Railway stops reading `railway.json` on **2026-12-01**. Before then, these commands need to move to Railway's Infrastructure as Code or the dashboard. This is tracked in CLAUDE.md.
+> **Note:** Railway stops reading `railway.json` on **2026-12-01**. Before then, these commands need to move to Railway's Infrastructure as Code or the dashboard. This is tracked as a Post-launch issue.
