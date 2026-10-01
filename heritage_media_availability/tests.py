@@ -7,6 +7,7 @@ Django creates a separate throwaway test database, so your real data is safe.
 
 import os
 import runpy
+from datetime import timedelta
 from pathlib import Path
 from unittest import mock
 
@@ -14,12 +15,15 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import ProtectedError
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from config.env import env_bool, env_list, env_required, parse_database_url
 
-from .models import Member
+from .models import ClosedMonth, Member, Submission
+from .months import days_in_month, month_label, validate_month
 
 
 class HomePageTests(TestCase):
@@ -232,3 +236,227 @@ class SessionLengthTests(SimpleTestCase):
 
     def test_session_lasts_30_days(self):
         self.assertEqual(settings.SESSION_COOKIE_AGE, 60 * 60 * 24 * 30)
+
+
+class MonthHelperTests(SimpleTestCase):
+    """The "YYYY-MM" helpers in months.py."""
+
+    def test_valid_months_pass(self):
+        for month in ['2026-01', '2026-11', '2027-12']:
+            validate_month(month)  # raises if invalid
+
+    def test_invalid_months_are_rejected(self):
+        for month in ['2026-13', '2026-00', '2026-1', '26-11', '2026/11', '2026-11-01', '', None]:
+            with self.subTest(month=month), self.assertRaises(ValidationError):
+                validate_month(month)
+
+    def test_month_label(self):
+        self.assertEqual(month_label('2026-11'), 'November 2026')
+
+    def test_days_in_month_handles_leap_years(self):
+        self.assertEqual(days_in_month('2026-11'), 30)
+        self.assertEqual(days_in_month('2027-02'), 28)
+        self.assertEqual(days_in_month('2028-02'), 29)
+
+
+class SubmissionModelTests(TestCase):
+    """Submission data rules: validation messages and database constraints."""
+
+    def setUp(self):
+        self.bob = Member.objects.create(first_name='Bob', last_name='Smith')
+
+    def submission(self, **fields):
+        """An unsaved submission for Bob in November 2026, with any fields overridden."""
+        values = {'member': self.bob, 'month': '2026-11', 'kind': Submission.Kind.DAYS, 'days': [3]}
+        return Submission(**{**values, **fields})
+
+    def assertDaysError(self, submission, text):
+        """full_clean() fails with an error on the days field containing text."""
+        with self.assertRaises(ValidationError) as caught:
+            submission.full_clean()
+        self.assertIn(text, ' '.join(caught.exception.message_dict['days']))
+
+    def test_valid_submissions_pass(self):
+        self.submission().full_clean()
+        self.submission(kind=Submission.Kind.AVAILABLE_ALL, days=[]).full_clean()
+        self.submission(kind=Submission.Kind.UNAVAILABLE_ALL, days=[], notes='x' * 500).full_clean()
+
+    def test_days_are_sorted_and_deduplicated(self):
+        submission = self.submission(days=[20, 3, 5, 3])
+        submission.full_clean()
+        self.assertEqual(submission.days, [3, 5, 20])
+
+    def test_days_kind_needs_at_least_one_day(self):
+        self.assertDaysError(self.submission(days=[]), 'Pick at least one day')
+
+    def test_all_month_kinds_cannot_have_days(self):
+        self.assertDaysError(self.submission(kind=Submission.Kind.AVAILABLE_ALL, days=[3]), 'Days can only be picked')
+
+    def test_day_must_exist_in_that_month(self):
+        self.assertDaysError(self.submission(month='2027-02', days=[28, 29, 30]), 'February 2027 has no day 29, 30.')
+        self.submission(month='2028-02', days=[29]).full_clean()  # leap year: fine
+
+    def test_bad_month_is_rejected(self):
+        with self.assertRaises(ValidationError) as caught:
+            self.submission(month='2026-13').full_clean()
+        self.assertIn('month', caught.exception.message_dict)
+
+    def test_notes_over_500_characters_are_rejected(self):
+        with self.assertRaises(ValidationError) as caught:
+            self.submission(notes='x' * 501).full_clean()
+        self.assertIn('notes', caught.exception.message_dict)
+
+    def test_database_rejects_bad_rows_that_skip_validation(self):
+        # save() without full_clean() skips the Python checks; Postgres must still refuse.
+        bad_rows = [
+            {'month': '2026-13'},
+            {'days': []},
+            {'kind': Submission.Kind.AVAILABLE_ALL, 'days': [3]},
+            {'kind': 'maybe', 'days': []},
+            {'days': [0]},
+            {'days': [32]},
+        ]
+        for fields in bad_rows:
+            with self.subTest(fields=fields), self.assertRaises(IntegrityError), transaction.atomic():
+                self.submission(**fields).save()
+
+    def test_current_returns_newest_per_member_and_month(self):
+        now = timezone.now()
+        jane = Member.objects.create(first_name='Jane', last_name='Doe')
+        self.submission(days=[1], submitted_at=now - timedelta(days=2)).save()
+        newest_bob_nov = self.submission(days=[2], submitted_at=now - timedelta(days=1))
+        newest_bob_nov.save()
+        bob_dec = self.submission(month='2026-12', days=[5], submitted_at=now - timedelta(days=3))
+        bob_dec.save()
+        jane_nov = self.submission(member=jane, kind=Submission.Kind.AVAILABLE_ALL, days=[], submitted_at=now)
+        jane_nov.save()
+
+        current = set(Submission.objects.current())
+        self.assertEqual(current, {newest_bob_nov, bob_dec, jane_nov})
+        # Every version is still stored as history.
+        self.assertEqual(Submission.objects.count(), 4)
+
+    def test_member_with_submissions_cannot_be_deleted(self):
+        self.submission().save()
+        with self.assertRaises(ProtectedError):
+            self.bob.delete()
+
+
+class ClosedMonthModelTests(TestCase):
+    """ClosedMonth rows: one per closed month, valid months only."""
+
+    def test_str_is_month_label(self):
+        self.assertEqual(str(ClosedMonth(month='2026-11')), 'November 2026')
+
+    def test_closing_twice_gives_friendly_message(self):
+        ClosedMonth.objects.create(month='2026-11')
+        with self.assertRaises(ValidationError) as caught:
+            ClosedMonth(month='2026-11').full_clean()
+        self.assertIn('That month is already closed.', caught.exception.message_dict['month'])
+
+    def test_database_rejects_bad_month(self):
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            ClosedMonth.objects.create(month='2026-13')
+
+
+class ClosedMonthAdminTests(TestCase):
+    """AD-8: closing (with confirmation) and reopening months in Django admin."""
+
+    def setUp(self):
+        admin_user = get_user_model().objects.create_superuser('skye', password='test-pass-123')
+        self.client.force_login(admin_user)
+        self.add_url = reverse('admin:heritage_media_availability_closedmonth_add')
+        self.list_url = reverse('admin:heritage_media_availability_closedmonth_changelist')
+
+    def test_add_form_uses_month_picker(self):
+        response = self.client.get(self.add_url)
+        self.assertContains(response, 'type="month"')
+        self.assertNotContains(response, '_addanother')
+        self.assertNotContains(response, '_continue')
+
+    def test_save_shows_confirmation_without_closing(self):
+        response = self.client.post(self.add_url, {'month': '2026-11'})
+        self.assertContains(response, 'Close November 2026?')
+        self.assertContains(response, 'Yes, close it')
+        self.assertFalse(ClosedMonth.objects.exists())
+
+    def test_confirming_closes_the_month(self):
+        response = self.client.post(self.add_url, {'month': '2026-11', 'confirm': 'yes'})
+        self.assertRedirects(response, self.list_url)
+        self.assertTrue(ClosedMonth.objects.filter(month='2026-11').exists())
+
+    def test_past_months_can_be_closed(self):
+        self.client.post(self.add_url, {'month': '2020-01', 'confirm': 'yes'})
+        self.assertTrue(ClosedMonth.objects.filter(month='2020-01').exists())
+
+    def test_invalid_month_returns_to_form_without_confirmation(self):
+        response = self.client.post(self.add_url, {'month': '2026-13'})
+        self.assertNotContains(response, 'Yes, close it')
+        self.assertContains(response, 'Enter a month like 2026-11')
+
+    def test_already_closed_month_gets_friendly_error(self):
+        ClosedMonth.objects.create(month='2026-11')
+        # Checked on the first Save and again on confirm (e.g. closed in another tab meanwhile).
+        for data in [{'month': '2026-11'}, {'month': '2026-11', 'confirm': 'yes'}]:
+            with self.subTest(data=data):
+                response = self.client.post(self.add_url, data)
+                self.assertContains(response, 'That month is already closed.')
+        self.assertEqual(ClosedMonth.objects.count(), 1)
+
+    def test_reopen_action_deletes_selected_rows(self):
+        ClosedMonth.objects.create(month='2026-11')
+        ClosedMonth.objects.create(month='2026-12')
+        response = self.client.post(
+            self.list_url,
+            {'action': 'reopen_months', '_selected_action': ['2026-11']},
+            follow=True,
+        )
+        self.assertContains(response, 'Reopened November 2026.')
+        self.assertEqual(list(ClosedMonth.objects.values_list('month', flat=True)), ['2026-12'])
+
+    def test_list_shows_month_names_and_only_reopen_action(self):
+        ClosedMonth.objects.create(month='2026-11')
+        response = self.client.get(self.list_url)
+        self.assertContains(response, 'November 2026')
+        self.assertContains(response, 'Reopen selected months')
+        self.assertNotContains(response, 'delete_selected')
+
+    def test_edit_and_delete_are_blocked(self):
+        ClosedMonth.objects.create(month='2026-11')
+        change_url = reverse('admin:heritage_media_availability_closedmonth_change', args=['2026-11'])
+        delete_url = reverse('admin:heritage_media_availability_closedmonth_delete', args=['2026-11'])
+        with self.assertLogs('django.request', level='WARNING'):
+            self.client.post(change_url, {'month': '2026-12'})
+            self.client.post(delete_url, {'post': 'yes'})
+        self.assertEqual(list(ClosedMonth.objects.values_list('month', flat=True)), ['2026-11'])
+
+
+class SubmissionAdminTests(TestCase):
+    """The read-only submission history in Django admin."""
+
+    def setUp(self):
+        admin_user = get_user_model().objects.create_superuser('skye', password='test-pass-123')
+        self.client.force_login(admin_user)
+        bob = Member.objects.create(first_name='Bob', last_name='Smith')
+        self.submission = Submission.objects.create(member=bob, month='2026-11', kind='days', days=[3, 20])
+
+    def test_history_list_shows_submissions(self):
+        response = self.client.get(reverse('admin:heritage_media_availability_submission_changelist'))
+        self.assertContains(response, 'Bob Smith')
+        self.assertContains(response, 'November 2026')
+        self.assertContains(response, '3, 20')
+
+    def test_history_cannot_be_added_edited_or_deleted(self):
+        pk = self.submission.pk
+        with self.assertLogs('django.request', level='WARNING'):
+            add = self.client.get(reverse('admin:heritage_media_availability_submission_add'))
+            delete = self.client.post(
+                reverse('admin:heritage_media_availability_submission_delete', args=[pk]), {'post': 'yes'}
+            )
+        self.assertEqual(add.status_code, 403)
+        self.assertEqual(delete.status_code, 403)
+        # The detail page is view-only: no editable inputs for the submission's fields.
+        detail = self.client.get(reverse('admin:heritage_media_availability_submission_change', args=[pk]))
+        self.assertEqual(detail.status_code, 200)
+        self.assertNotContains(detail, 'name="notes"')
+        self.assertTrue(Submission.objects.filter(pk=pk).exists())

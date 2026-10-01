@@ -48,6 +48,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    # Postgres-only features that ship with Django; needed for Submission.days (ArrayField).
+    'django.contrib.postgres',
     # Our app: the team form and Skye's admin views.
     'heritage_media_availability',
 ]
