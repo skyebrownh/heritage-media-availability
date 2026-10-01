@@ -2,16 +2,20 @@
 Views (page handlers) for the Heritage Media Availability app.
 
 The team-facing form lives at the site root, with its confirmation page at
-/thanks/. Skye's pages are in Django admin for now; the Week 3 views will be
+/thanks/ and a small JSON lookup for pre-filling (/last-submission/). Skye's pages are in Django admin for now; the Week 3 views will be
 added here.
 """
 
+from django.core.exceptions import ValidationError
+from django.http import JsonResponse
 from django.shortcuts import redirect, render
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods
 
-from .formatting import confirmation_message
+from .formatting import confirmation_message, previous_summary
 from .forms import CLOSED_MONTH_MESSAGE, TeamForm
 from .models import Submission
+from .months import validate_month
 
 # Session key holding the id of this visitor's latest submission, so the
 # confirmation page knows what to restate without putting the id in the URL
@@ -78,3 +82,50 @@ def csrf_failure(request, reason=''):
     stays 403 (refused); `reason` is Django's technical cause, not shown.
     """
     return render(request, 'heritage_media_availability/csrf_failure.html', status=403)
+
+
+@never_cache
+@require_GET
+def last_submission(request):
+    """
+    TF-9: the current submission for one member and month, as JSON.
+
+    Called by the team form's script (GET /last-submission/?member=12&month=2026-11)
+    when a name and month are both picked, so the form can pre-fill without
+    reloading (decision 2026-09-28). Returns only the newest submission for
+    that one member and month, never the history:
+
+        {"found": true, "kind": "days", "days": [3, 4, 20], "notes": "...",
+         "summary": "Your last submission (10/02/26): Oct 3-4, 20. Submitting again replaces it."}
+
+    or {"found": false}. Anyone with the link could look up any name, which
+    matches v1's trusted-identity rule (SPEC.md business rules): the data is
+    only names and dates. never_cache stops the browser reusing an old answer
+    after someone resubmits.
+    """
+    member_id = request.GET.get('member', '')
+    month = request.GET.get('month', '')
+    try:
+        validate_month(month)
+    except ValidationError:
+        return JsonResponse({'error': 'Invalid month.'}, status=400)
+    if not member_id.isdigit():
+        return JsonResponse({'error': 'Invalid member.'}, status=400)
+
+    # Newest first, so .first() is the current one ("last submission wins").
+    submission = (
+        Submission.objects.select_related('member')
+        .filter(member_id=int(member_id), month=month)
+        .order_by('-submitted_at')
+        .first()
+    )
+    if submission is None:
+        return JsonResponse({'found': False})
+
+    return JsonResponse({
+        'found': True,
+        'kind': submission.kind,
+        'days': submission.days,
+        'notes': submission.notes,
+        'summary': previous_summary(submission),
+    })
