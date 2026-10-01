@@ -25,7 +25,7 @@ from django.utils.html import escape
 
 from config.env import env_bool, env_list, env_required, parse_database_url
 
-from .formatting import confirmation_message, day_ranges
+from .formatting import confirmation_message, day_ranges, days_list, previous_summary
 from .forms import CLOSED_MONTH_MESSAGE
 from .models import ClosedMonth, Member, Submission
 from .months import days_in_month, month_label, month_weeks, upcoming_months, validate_month
@@ -202,6 +202,8 @@ class SubmitTests(TestCase):
     def test_ticked_days_survive_a_failed_submit(self):
         response = self.post(member='')
         html = response.content.decode()
+        # Tells the script not to pre-fill over the person's edits (TF-9).
+        self.assertIn('data-bound="true"', html)
         for day in ['3', '20']:
             self.assertRegex(html, rf'id="day-2026-11-{day}"[^>]*checked')
         self.assertNotRegex(html, r'id="day-2026-11-4"[^>]*checked')
@@ -309,6 +311,63 @@ class ConfirmationPageTests(TestCase):
         self.assertRedirects(self.client.get(self.thanks_url), self.url)
 
 
+class LastSubmissionLookupTests(TestCase):
+    """TF-9: the JSON lookup the form's script uses to pre-fill."""
+
+    url = reverse('heritage_media_availability:last_submission')
+
+    def setUp(self):
+        self.bob = Member.objects.create(first_name='Bob', last_name='Smith')
+        self.jane = Member.objects.create(first_name='Jane', last_name='Doe')
+
+    def lookup(self, member, month):
+        """Call the lookup and return the response."""
+        return self.client.get(self.url, {'member': member, 'month': month})
+
+    def add(self, member, month, kind='days', days=(), notes='', when=datetime(2026, 10, 2, 16, 0, tzinfo=UTC)):
+        """Save a submission at a given time (default Oct 2, noon Eastern)."""
+        return Submission.objects.create(
+            member=member, month=month, kind=kind, days=list(days), notes=notes, submitted_at=when
+        )
+
+    def test_returns_the_current_submission(self):
+        self.add(self.bob, '2026-11', days=[1], when=datetime(2026, 10, 1, 16, 0, tzinfo=UTC))
+        self.add(self.bob, '2026-11', days=[3, 4, 5, 6, 7, 20], notes='No rehearsal on the 11th')
+        response = self.lookup(self.bob.pk, '2026-11')
+        self.assertEqual(response.json(), {
+            'found': True,
+            'kind': 'days',
+            'days': [3, 4, 5, 6, 7, 20],
+            'notes': 'No rehearsal on the 11th',
+            'summary': 'Your last submission (10/02/26): Nov 3-7, 20. Submitting again replaces it.',
+        })
+
+    def test_only_the_one_member_and_month(self):
+        # Never another person's or another month's answer, and never the history.
+        self.add(self.jane, '2026-11', kind='available_all')
+        self.add(self.bob, '2026-12', kind='available_all')
+        self.assertEqual(self.lookup(self.bob.pk, '2026-11').json(), {'found': False})
+
+    def test_unknown_member_is_simply_not_found(self):
+        self.assertEqual(self.lookup(99999, '2026-11').json(), {'found': False})
+
+    def test_bad_parameters_are_rejected(self):
+        for member, month in [('', '2026-11'), ('abc', '2026-11'), (self.bob.pk, ''), (self.bob.pk, '2026-13')]:
+            with self.subTest(member=member, month=month):
+                with self.assertLogs('django.request', level='WARNING'):
+                    self.assertEqual(self.lookup(member, month).status_code, 400)
+
+    def test_answers_are_never_cached(self):
+        # A resubmission must show up straight away, not an old cached answer.
+        self.assertIn('no-store', self.lookup(self.bob.pk, '2026-11')['Cache-Control'])
+
+    def test_form_page_has_the_summary_box(self):
+        response = self.client.get(reverse('heritage_media_availability:team_form'))
+        self.assertContains(response, 'id="previous-summary" role="status"')
+        self.assertContains(response, self.url)
+        self.assertContains(response, 'data-bound="false"')
+
+
 class FormattingTests(TestCase):
     """Day ranges and the TF-10 confirmation sentence."""
 
@@ -336,6 +395,36 @@ class FormattingTests(TestCase):
     def test_all_month_wording(self):
         self.assertEqual(self.message('available_all', month='2026-11'), "Thanks, Bob! You're available all of November.")
         self.assertEqual(self.message('unavailable_all', month='2026-11'), "Thanks, Bob! You're unavailable all of November.")
+
+
+class PreviousSummaryTests(TestCase):
+    """TF-9: wording of the earlier-submission summary."""
+
+    def summary(self, kind='days', days=(), when=datetime(2026, 10, 2, 16, 0, tzinfo=UTC)):
+        """The summary for an unsaved November submission made at `when`."""
+        member = Member(first_name='Bob', last_name='Smith')
+        return previous_summary(Submission(member=member, month='2026-11', kind=kind, days=list(days), submitted_at=when))
+
+    def test_days_name_the_month_once(self):
+        self.assertEqual(days_list('2026-10', [3, 4, 5, 6, 7, 20]), 'Oct 3-7, 20')
+        self.assertEqual(days_list('2026-10', [3, 4, 5, 6, 7, 10, 20]), 'Oct 3-7, 10, 20')
+        self.assertEqual(
+            self.summary(days=[3, 4, 5, 6, 7, 20]),
+            'Your last submission (10/02/26): Nov 3-7, 20. Submitting again replaces it.',
+        )
+
+    def test_all_month_wording(self):
+        self.assertEqual(
+            self.summary('available_all'), 'Your last submission (10/02/26): available all month. Submitting again replaces it.'
+        )
+        self.assertEqual(
+            self.summary('unavailable_all'),
+            'Your last submission (10/02/26): unavailable all month. Submitting again replaces it.',
+        )
+
+    def test_date_is_in_eastern_time(self):
+        # 2 am UTC on Oct 3 is still 10 pm Oct 2 in New York.
+        self.assertIn('(10/02/26)', self.summary('available_all', when=datetime(2026, 10, 3, 2, 0, tzinfo=UTC)))
 
 
 class MonthWeeksTests(SimpleTestCase):

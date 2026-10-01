@@ -2,11 +2,13 @@
 Turning saved submissions into readable text.
 
 day_ranges() collapses runs of days ([3, 4, 5, 6, 7, 20] → 3-7 and 20).
-The TF-10 confirmation uses it now; Week 3's copy formats (AD-7, "Bob: 3-7, 20")
-will reuse it, so both always agree on how ranges are grouped.
+The TF-10 confirmation and TF-9 summary use it now; Week 3's copy formats
+(AD-7, "Bob: 3-7, 20") will reuse it, so all agree on how ranges are grouped.
 """
 
 import calendar
+
+from django.utils import timezone
 
 from .models import Submission
 from .months import split_month
@@ -68,3 +70,35 @@ def confirmation_message(submission):
     if submission.kind == Submission.Kind.UNAVAILABLE_ALL:
         return f"{greeting} You're unavailable all of {month_name}."
     return f"{greeting} You're unavailable {days_phrase(submission.month, submission.days)}."
+
+
+def days_list(month, days):
+    """
+    TF-9: the days as a compact list, naming the month once: "Oct 3-7, 20".
+
+    Shorter than the TF-10 sentence (no "and"), since it's a reference line.
+    """
+    pieces = [format_range(first, last) for first, last in day_ranges(days)]
+    _, number = split_month(month)
+    return f'{calendar.month_abbr[number]} {", ".join(pieces)}'
+
+
+def previous_summary(submission):
+    """
+    TF-9: the read-only reminder of someone's current submission for a month.
+
+    "Your last submission (10/02/26): Oct 3-7, 20. Submitting again replaces it."
+    "Your last submission (10/02/26): available all month. Submitting again replaces it."
+    The date is the day it was submitted, in Eastern time (settings.TIME_ZONE),
+    as MM/DD/YY so it doesn't read as part of the days that follow
+    ("(Oct 2): Oct 3-7" put two month names side by side).
+    """
+    when = timezone.localtime(submission.submitted_at).strftime('%m/%d/%y')
+
+    if submission.kind == Submission.Kind.AVAILABLE_ALL:
+        what = 'available all month'
+    elif submission.kind == Submission.Kind.UNAVAILABLE_ALL:
+        what = 'unavailable all month'
+    else:
+        what = days_list(submission.month, submission.days)
+    return f'Your last submission ({when}): {what}. Submitting again replaces it.'

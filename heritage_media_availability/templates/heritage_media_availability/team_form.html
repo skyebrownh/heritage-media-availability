@@ -5,6 +5,7 @@
   #6: name and month pickers, plus the closed-month message (TF-2 to TF-4).
   #7: all-month choice, tap-to-select calendar, and notes (TF-5 to TF-7).
   #8: submit, with server-side checks and plain-language messages (TF-8).
+  #9: pre-fill an earlier submission for the chosen name and month (TF-9).
 {% endcomment %}
 
 {% block content %}
@@ -18,7 +19,8 @@
     bubbles, which differ by browser; the server's plain-language messages
     (TF-8) are shown instead, consistently everywhere.
   {% endcomment %}
-  <form method="post" novalidate class="mt-6 space-y-5">
+  {# data-bound="true" means this page is a failed submit shown again; the script then keeps the person's edits instead of pre-filling over them. #}
+  <form method="post" novalidate class="mt-6 space-y-5" data-bound="{{ form.is_bound|yesno:'true,false' }}">
     {# Django's protection against other websites posting to this form. #}
     {% csrf_token %}
 
@@ -68,6 +70,15 @@
 
     {# Everything below is hidden for a closed month (TF-4). #}
     <section id="form-details" class="space-y-5"{% if form.month_closed %} hidden{% endif %}>
+
+      {% comment %}
+        TF-9: read-only reminder of this person's current submission for the
+        month, e.g. "Your last submission (10/02/26): Oct 3-7, 20. Submitting
+        again replaces it." The script fills it in; it stays put while they
+        edit, and "empty:hidden" hides it when there's nothing to show.
+        role="status" reads it out when it appears.
+      {% endcomment %}
+      <p id="previous-summary" role="status" class="rounded-xl bg-neutral-100 p-4 text-neutral-700 empty:hidden"></p>
 
       {# TF-6: the all-month choice sits above the calendar. #}
       <div>
@@ -175,10 +186,17 @@
    * - TF-5: only the chosen month's calendar is shown and enabled.
    * - TF-6: an all-month option clears and disables the calendar;
    *   "Pick specific days" re-enables it.
+   * - TF-9: with a name and an open month chosen, look up the person's
+   *   current submission and pre-fill the form with it.
    */
   (function () {
     const monthSelect = document.getElementById('{{ form.month.id_for_label }}');
     const kindSelect = document.getElementById('{{ form.kind.id_for_label }}');
+    const form = monthSelect.form;
+    const memberSelect = document.getElementById('{{ form.member.id_for_label }}');
+    const notesBox = document.getElementById('{{ form.notes.id_for_label }}');
+    const summary = document.getElementById('previous-summary');
+    const LOOKUP_URL = "{% url 'heritage_media_availability:last_submission' %}";
     const message = document.getElementById('closed-month-message');
     const closedBox = document.getElementById('closed-month-template');
     const details = document.getElementById('form-details');
@@ -245,9 +263,85 @@
       applyKind();
     }
 
+    // TF-9 state. "prefilled" is true while the form holds an earlier
+    // submission that the script put there (so it knows it may take it out
+    // again). "lookupNumber" counts lookups, so if the person changes name
+    // twice quickly, a slow first answer can't overwrite the second.
+    let prefilled = false;
+    let lookupNumber = 0;
+
+    /** Put the form back to its starting state: specific days, nothing ticked, no notes. */
+    function resetToBlank() {
+      kindSelect.value = 'days';
+      const calendar = activeCalendar();
+      if (calendar) clearDays(calendar);
+      notesBox.value = '';
+      applyKind();
+    }
+
+    /** TF-9: copy an earlier submission into the form so only changes need making. */
+    function fillFrom(previous) {
+      kindSelect.value = previous.kind;
+      applyKind();
+      const calendar = activeCalendar();
+      if (calendar) {
+        clearDays(calendar);
+        previous.days.forEach(function (day) {
+          const box = calendar.querySelector('input[name="days"][value="' + day + '"]');
+          if (box) box.checked = true;
+        });
+      }
+      notesBox.value = previous.notes;
+    }
+
+    /**
+     * TF-9: look up the chosen person's current submission for the chosen
+     * month and show its summary. With fill=true, also pre-fill the form.
+     * If there's nothing earlier, undo any pre-fill made for a different
+     * name or month, but leave anything the person entered themselves.
+     */
+    async function loadPrevious(fill) {
+      const thisLookup = ++lookupNumber;
+      summary.textContent = '';
+
+      if (!memberSelect.value || !monthSelect.value || chosenMonthIsClosed()) {
+        if (fill && prefilled) resetToBlank();
+        prefilled = false;
+        return;
+      }
+
+      let previous;
+      try {
+        const params = new URLSearchParams({ member: memberSelect.value, month: monthSelect.value });
+        const response = await fetch(LOOKUP_URL + '?' + params, { headers: { Accept: 'application/json' } });
+        if (!response.ok) return;
+        previous = await response.json();
+      } catch (error) {
+        // No connection or similar: skip pre-filling; the form still works.
+        return;
+      }
+      // A newer lookup started while this one was waiting; its answer wins.
+      if (thisLookup !== lookupNumber) return;
+
+      if (previous.found) {
+        summary.textContent = previous.summary;
+        if (fill) {
+          fillFrom(previous);
+          prefilled = true;
+        }
+      } else {
+        if (fill && prefilled) resetToBlank();
+        prefilled = false;
+      }
+    }
+
     monthSelect.addEventListener('change', function () {
       showClosed(chosenMonthIsClosed());
       showCalendarFor(true);
+      loadPrevious(true);
+    });
+    memberSelect.addEventListener('change', function () {
+      loadPrevious(true);
     });
     kindSelect.addEventListener('change', applyKind);
 
@@ -257,6 +351,8 @@
     const serverSaidClosed = message.children.length > 0;
     showClosed(chosenMonthIsClosed() || serverSaidClosed);
     showCalendarFor(false);
+    // After a failed submit, show the summary but keep the person's edits.
+    loadPrevious(form.dataset.bound !== 'true');
   })();
 </script>
 {% endblock %}
