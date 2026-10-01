@@ -7,7 +7,7 @@ It replaces the monthly group-chat thread. The app only **collects and displays*
 - **Team side:** one shared link with no login. Pick your name and a month, tap the days you're out (or choose "available/unavailable all month"), and submit. A new submission replaces your old one.
 - **Admin side:** a password-protected roster, a tracker of who has responded, by-person and by-date views with copy buttons, and closing/reopening months.
 
-See [SPEC.md](SPEC.md) for the full requirements (with IDs like TF-3 and AD-2, plus their status) and [CLAUDE.md](CLAUDE.md) for working conventions and the decision log.
+See [SPEC.md](SPEC.md) for the full requirements (with IDs like TF-3 and AD-2, their status, and a decision log) and [CLAUDE.md](CLAUDE.md) for working conventions and architecture notes.
 
 ## Status
 
@@ -94,8 +94,8 @@ config/                       Django project: settings, URLs, WSGI
 heritage_media_availability/  The app: models, admin, views, templates, tests
 gunicorn.conf.py              Production web server settings
 railway.json                  Railway build/deploy commands
-SPEC.md                       Requirements (source of truth)
-CLAUDE.md                     Conventions and decision log
+SPEC.md                       Requirements and decisions (source of truth)
+CLAUDE.md                     Conventions and architecture notes
 ```
 
 ## Deployment

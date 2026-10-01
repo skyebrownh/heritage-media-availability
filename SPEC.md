@@ -235,3 +235,10 @@ Week 1 gets a bare app deployed early, so hosting surprises show up before the r
 ### Open questions
 
 None for v1. Copy labels, non-responders, the by-date copy button, the launch date, the app name, and the accent color are settled in the sections above.
+
+## Decisions
+
+Spec decisions that aren't captured in a requirement above, with the date they were made. Decisions that change a requirement are made by editing that requirement directly.
+
+- 2026-09-28: TF-9 pre-fill loads the earlier submission with a small JavaScript fetch, so picking a name and month doesn't reload the page.
+- Open (2026-09-28), to review during deployment hardening: how weekly backups are met (see Non-functional requirements). Check what Railway Hobby provides before relying on it.

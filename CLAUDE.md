@@ -20,7 +20,7 @@ This app only collects and displays availability. It never schedules anyone.
 2. **Small steps.** Build one requirement or a small group of related ones at a time. Never build ahead of the current step.
 3. **Tell me how to test.** After each step, give me exact manual test steps (what to click, what I should see) and run the automated tests.
 4. **Dependencies.** Ask before adding any package. Prefer the standard library and Django built-ins.
-5. **Keep this file current.** When we add a command or make a lasting decision, update the Commands or Decisions section below.
+5. **Keep docs current.** Spec decisions (what the app does) go in SPEC.md: update the requirement itself, and log the decision with a date in SPEC.md's Decisions section. This file holds only conventions, standards, and architectural context; update it when those change or when we add a command.
 
 ### Code comments
 
@@ -57,6 +57,10 @@ Write good explanatory comments throughout. I'll be reading this code to learn f
 - Hosting: Railway (Hobby plan), deployed from GitHub
 - gunicorn serves the app in production; WhiteNoise serves static files (CSS, JS, admin styles)
 - Django's built-in test runner for tests
+- Approved packages: `django`, `psycopg[binary]`, `gunicorn`, `whitenoise`. Anything else needs approval first.
+- `DATABASE_URL` is parsed with the standard library (`config/env.py`), not dj-database-url. Local `.env` is loaded with `uv run --env-file .env`, not python-dotenv.
+- Static files use WhiteNoise's `CompressedStaticFilesStorage` (no filename hashing), so tests don't need `collectstatic` first. Only the admin has static files; Tailwind comes from the CDN.
+- `check --deploy` warnings mail.E001, security.W005 and security.W021 are silenced on purpose (reasons in `config/settings.py`). Revisit if we add a custom domain.
 
 ### Secrets and security
 
@@ -103,26 +107,4 @@ Deploying: pushing/merging to `main` deploys on Railway. `railway.json` (JSON, s
 - run `python manage.py migrate` before each deploy (a failed migration cancels the deploy, and the old version keeps running);
 - start with `migrate --check` (fails the deploy if any migration wasn't applied), then `collectstatic`, then `gunicorn config.wsgi` (gunicorn options live in `gunicorn.conf.py`).
 - Note (2026-10-01): the first deploy skipped the file's pre-deploy migrate, so the same command is also set in the dashboard (Settings → Deploy → Pre-deploy Command). Root cause still being checked.
-
-### Decisions
-
-\<!-- Record lasting decisions here with a date. -->
-
-- 2026-09-28: Admin login uses a Django superuser (stored in the database, password hashed). SPEC.md updated to match.
-- 2026-09-29: The by-date view (AD-6) and the by-date copy text both skip days with nobody out. (Replaces a 2026-09-28 decision to show every day in the view.)
-- 2026-09-28: Close and Reopen month happen inside Django admin (AD-8), not on the custom dashboard. They're available for past months too.
-- 2026-09-28: The server rejects a submission only when its month is closed. Past months should normally be closed, but that's left flexible for exceptions.
-- 2026-09-29: Months are closed manually by Skye; nothing closes automatically. The team month dropdown is always current month through +6; reopened past months are never offered.
-- 2026-09-29: `ClosedMonth` model and its admin are built in Week 2 (with the team form), not Week 1.
-- 2026-09-29: Approved packages: django, psycopg[binary], gunicorn, whitenoise. `DATABASE_URL` is parsed with the standard library (no dj-database-url); local `.env` is loaded with `uv run --env-file .env` (no python-dotenv).
-- 2026-09-28: `Submission.days` uses Postgres `ArrayField` (django.contrib.postgres).
-- 2026-09-28: TF-9 pre-fill loads the earlier submission with a small JS fetch, with no page reload.
-- 2026-10-01: Members have required `first_name` and `last_name` (replaces the single `name` field). The (first, last) pair is unique regardless of capitalization ("bob smith" = "Bob Smith").
-- 2026-10-01: Team dropdown (TF-2) shows "First Last", sorted by first name, then last name. TF-10 greets by first name.
-- 2026-10-01: Admin views and copy output use a display name: first name only, plus last initial when another *active* member shares the first name ("Bob J.", "Bob S."). Tracker and copy sort A–Z by first name, then last name.
-- 2026-09-28: By-person copy lists responders A–Z, then non-responders A–Z.
-- 2026-09-28: TF-6 all-month choice is a dropdown (specific days / available all month / unavailable all month) instead of toggles.
-- 2026-09-30: Static files use WhiteNoise's `CompressedStaticFilesStorage` (no filename hashing), so tests don't need `collectstatic` first. Only admin files are static; Tailwind comes from the CDN.
-- 2026-09-30: `check --deploy` warnings silenced on purpose: mail.E001 (v1 sends no email), security.W005/W021 (HSTS subdomains/preload; we don't own railway.app). Revisit if we add a custom domain.
-- 2026-10-01: To do before 2026-12-01: Railway stops reading `railway.json` (Config as Code) on that date in favor of Infrastructure as Code (`.railway/railway.ts`, which needs a Node package; a Python version is in beta). Decide after launch whether to migrate or move the commands into the Railway dashboard.
-- 2026-09-28: To review later: weekly database backups (NFR). Check what Railway Hobby provides when we reach deployment hardening.
+- To do before 2026-12-01: Railway stops reading `railway.json` (Config as Code) on that date in favor of Infrastructure as Code (`.railway/railway.ts`, which needs a Node package; a Python version is in beta). Decide after launch whether to migrate or move these commands into the Railway dashboard.
