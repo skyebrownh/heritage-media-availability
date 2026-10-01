@@ -12,6 +12,7 @@ step (confirming before a month is closed).
 
 from django import forms
 from django.contrib import admin, messages
+from django.contrib.admin.models import DELETION, LogEntry
 from django.template.response import TemplateResponse
 
 from .models import ClosedMonth, Member, Submission
@@ -99,10 +100,33 @@ class ClosedMonthAdmin(admin.ModelAdmin):
 
     @admin.action(description='Reopen selected months')
     def reopen_months(self, request, queryset):
-        """Reopen months by deleting their rows; the team can submit again right away."""
+        """
+        Reopen months by deleting their rows; the team can submit again right away.
+
+        #16: record each reopen in admin's History and "Recent actions" first
+        (it must happen before the rows are gone). Closing is recorded by
+        Django's add view, so together they show who closed or reopened a
+        month and when. A month's ID is the month itself ("2026-11"), so if it
+        is closed again later, its History page shows the whole timeline.
+        """
         labels = ', '.join(str(closed_month) for closed_month in queryset)
+        # Like Django's log_deletions(), but with a description; the History
+        # page leaves the Action column blank for deletions without one.
+        LogEntry.objects.log_actions(
+            user_id=request.user.pk,
+            queryset=queryset,
+            action_flag=DELETION,
+            change_message='Reopened the month.',
+        )
         queryset.delete()
         self.message_user(request, f'Reopened {labels}.', messages.SUCCESS)
+
+    def construct_change_message(self, request, form, formsets, add=False):
+        """
+        #16: describe a close in History as "Closed the month." rather than
+        Django's generic "Added." (Editing is off, so adding is the only case.)
+        """
+        return 'Closed the month.'
 
     def add_view(self, request, form_url='', extra_context=None):
         """
