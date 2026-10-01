@@ -61,13 +61,13 @@ IDs let you reference each requirement when prompting an AI coding tool or testi
 | TF-1 | The form lives at one public link with no account or password. |
 | TF-2 | The user picks their name from a dropdown of active roster members, shown as "First Last" and sorted A–Z by first name (then last name). |
 | TF-3 | The user picks a month from the current month through 6 months ahead. No month is preselected, so the user always picks one deliberately. Closed months show a "(closed)" label. Past months are never offered, even if reopened. |
-| TF-4 | Picking a closed month hides the form and shows: "This month's schedule is finalized. Please text Skye with any changes." |
+| TF-4 | Picking a closed month hides the form and shows: "This month's schedule is finalized. Please text Skye with any changes." with a hint underneath: "You can choose a different month above." |
 | TF-5 | An open month shows a calendar of every day in that month. Tapping a day toggles it unavailable; tap targets are at least 44 px. |
 | TF-6 | Above the calendar, a dropdown offers "Pick specific days" (default), "I'm available all month", and "I'm unavailable all month". Choosing either all-month option clears and disables the calendar; switching back to "Pick specific days" re-enables it. |
 | TF-7 | An optional notes field accepts up to 500 characters. |
 | TF-8 | Submit requires a name, a month, and either at least one day or an all-month option. Missing pieces get a plain-language message. |
-| TF-9 | If the person already submitted for that month, the form pre-fills with it. A read-only summary of that earlier submission stays visible above the calendar as a reference while they edit, e.g. "Your last submission (Oct 2): Oct 3–7, 20. Submitting again replaces it." |
-| TF-10 | After submitting, a confirmation restates what was saved (e.g. "Thanks, Bob! You're unavailable Oct 3–7 and Oct 20.", greeting by first name) with a button to fill out another month. |
+| TF-9 | If the person already submitted for that month, the form pre-fills with it. A read-only summary of that earlier submission stays visible above the calendar as a reference while they edit, e.g. "Your last submission (Oct 2): Oct 3-7, 20. Submitting again replaces it." |
+| TF-10 | After submitting, a confirmation restates what was saved, greeting by first name, with a button to fill out another month. Days name the month once, then list ranges: "Thanks, Bob! You're unavailable Oct 3-7, and 20." (one range: "Oct 3-7"; three or more: "Oct 3-7, 10, and 20"). All-month choices read "Thanks, Bob! You're available all of November." and "Thanks, Bob! You're unavailable all of November." |
 | TF-11 | Nice-to-have: the device remembers the last name selected so returning users skip the dropdown. |
 
 ### Admin
@@ -241,3 +241,4 @@ None for v1. Copy labels, non-responders, the by-date copy button, the launch da
 Spec decisions that aren't captured in a requirement above, with the date they were made. Decisions that change a requirement are made by editing that requirement directly.
 
 - 2026-09-28: TF-9 pre-fill loads the earlier submission with a small JavaScript fetch, so picking a name and month doesn't reload the page.
+- 2026-10-01: If someone is marked inactive while their form is open, their submission is still accepted. The name dropdown shows active members only, but the server accepts any member on the roster.

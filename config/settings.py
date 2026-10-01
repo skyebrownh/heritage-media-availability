@@ -38,6 +38,11 @@ ALLOWED_HOSTS = env_list('ALLOWED_HOSTS')
 # header on every POST; without this, the admin login would fail in production.
 CSRF_TRUSTED_ORIGINS = env_list('CSRF_TRUSTED_ORIGINS')
 
+# When a form's security token is stale (e.g. cookies cleared while the form
+# was open), show a friendly "please try again" page instead of Django's bare
+# "CSRF verification failed" 403. The submission is still refused.
+CSRF_FAILURE_VIEW = 'heritage_media_availability.views.csrf_failure'
+
 
 # Application definition
 
