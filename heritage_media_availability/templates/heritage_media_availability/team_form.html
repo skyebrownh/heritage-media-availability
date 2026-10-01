@@ -3,11 +3,13 @@
 {% comment %}
   The team availability form at "/" (TF-1: no login).
   #6: name and month pickers, plus the closed-month message (TF-2 to TF-4).
-  The calendar, all-month choice and notes arrive in #7; submit in #8.
+  #7: all-month choice, tap-to-select calendar, and notes (TF-5 to TF-7).
+  Submit arrives in #8.
 {% endcomment %}
 
 {% block content %}
-<div class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-neutral-200">
+{# p-4 on phones (more room for the 7-column calendar), p-6 on larger screens. #}
+<div class="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-neutral-200 sm:p-6">
   <h1 class="text-2xl font-semibold">Heritage Media Availability</h1>
   <p class="mt-2 text-neutral-600">Let the Scheduler know which days you can't serve.</p>
 
@@ -34,33 +36,163 @@
     <div id="closed-month-message" role="status"
          class="rounded-xl bg-accent-50 p-4 font-medium text-accent-700 ring-1 ring-accent-200 empty:hidden"></div>
 
-    {# The rest of the form (calendar, all-month choice, notes, submit) goes here in #7 and #8. #}
-    <section id="form-details"></section>
+    {# Everything below is hidden for a closed month (TF-4). #}
+    <section id="form-details" class="space-y-5">
+
+      {# TF-6: the all-month choice sits above the calendar. #}
+      <div>
+        <label for="{{ form.kind.id_for_label }}" class="mb-2 block font-medium">{{ form.kind.label }}</label>
+        {{ form.kind }}
+      </div>
+
+      {# Shown until a month is picked, since the calendar depends on the month. #}
+      <p id="calendar-hint" class="rounded-xl bg-neutral-100 p-4 text-neutral-600">Choose a month to see its calendar.</p>
+
+      {% comment %}
+        TF-5: one calendar per month in the dropdown. All start hidden and
+        disabled; the script shows and enables only the chosen month's.
+        Disabled inputs are never submitted, so the hidden calendars can
+        share name="days" without sending anything.
+
+        Each day is a real checkbox, visually hidden ("sr-only"), with its
+        <label> drawn as the tappable square. That keeps the browser's
+        built-in keyboard (Tab, Space) and screen-reader support.
+      {% endcomment %}
+      {% for calendar in form.calendars %}
+      <fieldset data-month="{{ calendar.month }}" hidden disabled class="group">
+        <legend class="mb-1 font-medium">Which days can't you serve?</legend>
+        <p class="mb-3 text-neutral-600">{{ calendar.label }} · tap each day you're out.</p>
+
+        {# Shown by the script while an all-month option is chosen (TF-6). #}
+        <p data-kind-note hidden class="mb-3 text-neutral-600">Calendar not needed for this choice.</p>
+
+        {% comment %}
+          Seven columns, Sunday first. On a 375px phone the grid stretches
+          slightly into the card's padding (-mx-2) with tiny gaps, so each
+          square is about 45px wide; squares are 48px tall (h-12).
+          Tap targets must be at least 44px.
+        {% endcomment %}
+        <div class="-mx-2 grid grid-cols-7 gap-0.5 text-center sm:mx-0 sm:gap-1">
+          {# Weekday headings are for sighted users; each day's label already says its weekday. #}
+          {% for weekday in "SMTWTFS" %}
+          <div aria-hidden="true" class="pb-1 text-sm font-medium text-neutral-500">{{ weekday }}</div>
+          {% endfor %}
+
+          {% for week in calendar.weeks %}
+            {% for day in week %}
+              {% if day %}
+              <div>
+                <input type="checkbox" name="days" value="{{ day.day }}"
+                       id="day-{{ calendar.month }}-{{ day.day }}" class="peer sr-only">
+                {% comment %}
+                  peer-checked: styles the square when its checkbox is ticked:
+                  pastel blue plus a checkmark, so "selected" isn't shown by
+                  color alone. peer-focus-visible: draws the keyboard focus
+                  ring. group-disabled: dims everything while the fieldset is
+                  disabled (all-month option chosen).
+                {% endcomment %}
+                <label for="day-{{ calendar.month }}-{{ day.day }}"
+                       class="flex h-12 cursor-pointer select-none items-center justify-center rounded-lg border border-neutral-200 bg-white text-base
+                              peer-checked:border-accent-500 peer-checked:bg-accent-200 peer-checked:font-semibold peer-checked:text-accent-700
+                              peer-checked:after:ml-0.5 peer-checked:after:text-xs peer-checked:after:content-['✓']
+                              peer-focus-visible:ring-4 peer-focus-visible:ring-accent-200
+                              group-disabled:cursor-not-allowed group-disabled:opacity-40">
+                  {# Screen readers hear "Saturday, October 3"; sighted users see "3". #}
+                  <span aria-hidden="true">{{ day.day }}</span>
+                  <span class="sr-only">{{ day|date:"l, F j" }}</span>
+                </label>
+              </div>
+              {% else %}
+              {# Blank square before the 1st or after the last day. #}
+              <div></div>
+              {% endif %}
+            {% endfor %}
+          {% endfor %}
+        </div>
+      </fieldset>
+      {% endfor %}
+
+      {# TF-7: optional notes; maxlength="500" comes from the form field. #}
+      <div>
+        <label for="{{ form.notes.id_for_label }}" class="mb-2 block font-medium">{{ form.notes.label }}</label>
+        {{ form.notes }}
+        {# The id matches the aria-describedby Django adds to the box, so screen readers read this hint too. #}
+        <p id="{{ form.notes.auto_id }}_helptext" class="mt-2 text-sm text-neutral-600">{{ form.notes.help_text }}</p>
+      </div>
+    </section>
   </form>
 </div>
 
 <script>
   /*
-   * TF-4: picking a closed month hides the rest of the form and shows the
-   * "schedule is finalized" message; picking an open month reverses that.
-   * The server re-checks closed months on submit (#8), so this is only for
-   * a friendly experience, not for enforcing anything.
+   * Page behavior for the team form. Everything here is for a friendly
+   * experience only; the server re-checks every rule on submit (#8).
+   *
+   * - TF-4: a closed month hides the details and shows the "finalized" message.
+   * - TF-5: only the chosen month's calendar is shown and enabled.
+   * - TF-6: an all-month option clears and disables the calendar;
+   *   "Pick specific days" re-enables it.
    */
   (function () {
     const CLOSED_MESSAGE = "This month's schedule is finalized. Please text Skye with any changes.";
     const monthSelect = document.getElementById('{{ form.month.id_for_label }}');
+    const kindSelect = document.getElementById('{{ form.kind.id_for_label }}');
     const message = document.getElementById('closed-month-message');
     const details = document.getElementById('form-details');
+    const hint = document.getElementById('calendar-hint');
+    const calendars = document.querySelectorAll('fieldset[data-month]');
 
+    /** Untick every day in one calendar. */
+    function clearDays(calendar) {
+      calendar.querySelectorAll('input[name="days"]').forEach(function (box) {
+        box.checked = false;
+      });
+    }
+
+    /** The calendar for the chosen month, or undefined if no month is chosen. */
+    function activeCalendar() {
+      return Array.from(calendars).find(function (calendar) {
+        return calendar.dataset.month === monthSelect.value;
+      });
+    }
+
+    /**
+     * TF-6: apply the all-month choice to the visible calendar.
+     * Disabling the fieldset greys it out (group-disabled styles) and
+     * keeps its days from being submitted.
+     */
+    function applyKind() {
+      const calendar = activeCalendar();
+      if (!calendar) return;
+      const pickingDays = kindSelect.value === 'days';
+      if (!pickingDays) clearDays(calendar);
+      calendar.disabled = !pickingDays;
+      calendar.querySelector('[data-kind-note]').hidden = pickingDays;
+    }
+
+    /**
+     * Month changed: show the closed message or the details (TF-4), then
+     * show only that month's calendar (TF-5). Ticks are cleared on every
+     * switch, so what's on screen is exactly what will be sent.
+     */
     function updateForMonth() {
       const chosen = monthSelect.selectedOptions[0];
       const isClosed = Boolean(chosen && chosen.hasAttribute('data-closed'));
       message.textContent = isClosed ? CLOSED_MESSAGE : '';
       details.hidden = isClosed;
+
+      calendars.forEach(function (calendar) {
+        calendar.hidden = calendar.dataset.month !== monthSelect.value;
+        calendar.disabled = true;
+        clearDays(calendar);
+      });
+      hint.hidden = Boolean(monthSelect.value);
+      applyKind();
     }
 
     monthSelect.addEventListener('change', updateForMonth);
-    // Also run once on load: some browsers restore the last choice on Back.
+    kindSelect.addEventListener('change', applyKind);
+    // Also run once on load: some browsers restore the last choices on Back.
     updateForMonth();
   })();
 </script>

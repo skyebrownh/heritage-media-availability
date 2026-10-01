@@ -7,7 +7,8 @@ Django creates a separate throwaway test database, so your real data is safe.
 
 import os
 import runpy
-from datetime import UTC, datetime, timedelta
+import re
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from unittest import mock
 
@@ -23,7 +24,7 @@ from django.utils import timezone
 from config.env import env_bool, env_list, env_required, parse_database_url
 
 from .models import ClosedMonth, Member, Submission
-from .months import days_in_month, month_label, upcoming_months, validate_month
+from .months import days_in_month, month_label, month_weeks, upcoming_months, validate_month
 
 
 def at_utc(*args):
@@ -78,6 +79,74 @@ class TeamFormPageTests(TestCase):
     def test_closed_message_text_is_on_the_page(self):
         # TF-4: exact wording. Showing and hiding it is covered by the manual test steps.
         self.assertContains(self.client.get(self.url), "This month's schedule is finalized. Please text Skye with any changes.")
+
+
+class TeamFormDetailsTests(TestCase):
+    """The all-month choice, calendars and notes on the team form (TF-5 to TF-7)."""
+
+    url = reverse('heritage_media_availability:team_form')
+
+    def get(self):
+        """Load the form as if today were Oct 1, 2026 (months 2026-10 to 2027-04)."""
+        with at_utc(2026, 10, 1, 12, 0):
+            return self.client.get(self.url)
+
+    def fieldset(self, html, month):
+        """The HTML of one month's calendar fieldset."""
+        match = re.search(rf'<fieldset data-month="{month}".*?</fieldset>', html, re.DOTALL)
+        self.assertIsNotNone(match, f'No calendar for {month}')
+        return match.group(0)
+
+    def test_kind_dropdown_options_and_default(self):
+        # TF-6: three options, "Pick specific days" chosen by default.
+        response = self.get()
+        self.assertContains(response, '<option value="days" selected>Pick specific days</option>', html=True)
+        self.assertContains(response, '<option value="available_all">I&#x27;m available all month</option>', html=True)
+        self.assertContains(response, '<option value="unavailable_all">I&#x27;m unavailable all month</option>', html=True)
+
+    def test_notes_are_optional_and_capped_at_500(self):
+        # TF-7. The help text is linked to the box for screen readers.
+        response = self.get()
+        self.assertContains(response, 'maxlength="500"')
+        self.assertContains(response, 'aria-describedby="id_notes_helptext"')
+        self.assertContains(response, 'id="id_notes_helptext"')
+        self.assertFalse(response.context['form'].fields['notes'].required)
+
+    def test_one_calendar_per_month_all_starting_disabled(self):
+        # The script enables only the chosen month's calendar, so none submit until then.
+        html = self.get().content.decode()
+        fieldsets = re.findall(r'<fieldset [^>]*>', html)
+        self.assertEqual(len(fieldsets), 7)
+        for tag in fieldsets:
+            self.assertIn('hidden', tag)
+            self.assertIn('disabled', tag)
+
+    def test_february_2027_has_28_days_starting_on_monday(self):
+        calendar = self.fieldset(self.get().content.decode(), '2027-02')
+        self.assertEqual(len(re.findall(r'type="checkbox" name="days"', calendar)), 28)
+        self.assertIn('value="28"', calendar)
+        self.assertNotIn('value="29"', calendar)
+        # Sunday first: one blank square, then Feb 1 under Monday.
+        self.assertEqual(month_weeks('2027-02')[0][:2], [None, date(2027, 2, 1)])
+
+    def test_days_have_full_date_labels_for_screen_readers(self):
+        calendar = self.fieldset(self.get().content.decode(), '2026-10')
+        self.assertIn('<span class="sr-only">Saturday, October 3</span>', calendar)
+        self.assertIn('for="day-2026-10-3"', calendar)
+
+
+class MonthWeeksTests(SimpleTestCase):
+    """TF-5: months laid out as Sunday-first weeks."""
+
+    def test_october_2026_starts_on_thursday(self):
+        first_week = month_weeks('2026-10')[0]
+        self.assertEqual(first_week, [None, None, None, None, date(2026, 10, 1), date(2026, 10, 2), date(2026, 10, 3)])
+
+    def test_every_week_has_seven_squares_and_every_day_appears_once(self):
+        weeks = month_weeks('2026-11')
+        self.assertTrue(all(len(week) == 7 for week in weeks))
+        days = [day.day for week in weeks for day in week if day]
+        self.assertEqual(days, list(range(1, 31)))
 
 
 class UpcomingMonthsTests(SimpleTestCase):

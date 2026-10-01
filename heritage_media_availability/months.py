@@ -69,3 +69,20 @@ def upcoming_months():
         year, number = divmod(index, 12)
         months.append(f'{year}-{number + 1:02d}')
     return months
+
+
+def month_weeks(month):
+    """
+    TF-5: a month laid out as calendar rows, weeks starting on Sunday.
+
+    Returns a list of weeks; each week is 7 items, either a date in the month
+    or None for the blank squares before the 1st and after the last day.
+    E.g. October 2026 starts on a Thursday, so its first week is
+    [None, None, None, None, Oct 1, Oct 2, Oct 3].
+    """
+    year, number = split_month(month)
+    # firstweekday=6 makes weeks start on Sunday, as on US paper calendars.
+    # monthdatescalendar fills the edge squares with days from the next and
+    # previous months; we blank those out so only this month's days show.
+    weeks = calendar.Calendar(firstweekday=6).monthdatescalendar(year, number)
+    return [[day if day.month == number else None for day in week] for week in weeks]
