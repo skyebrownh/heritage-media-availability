@@ -60,7 +60,7 @@ IDs let you reference each requirement when prompting an AI coding tool or testi
 | --- | --- |
 | TF-1 | The form lives at one public link with no account or password. |
 | TF-2 | The user picks their name from a dropdown of active roster members, shown as "First Last" and sorted A–Z by first name (then last name). |
-| TF-3 | The user picks a month from the current month through 6 months ahead. Closed months show a "(closed)" label. Past months are never offered, even if reopened. |
+| TF-3 | The user picks a month from the current month through 6 months ahead. No month is preselected, so the user always picks one deliberately. Closed months show a "(closed)" label. Past months are never offered, even if reopened. |
 | TF-4 | Picking a closed month hides the form and shows: "This month's schedule is finalized. Please text Skye with any changes." |
 | TF-5 | An open month shows a calendar of every day in that month. Tapping a day toggles it unavailable; tap targets are at least 44 px. |
 | TF-6 | Above the calendar, a dropdown offers "Pick specific days" (default), "I'm available all month", and "I'm unavailable all month". Choosing either all-month option clears and disables the calendar; switching back to "Pick specific days" re-enables it. |

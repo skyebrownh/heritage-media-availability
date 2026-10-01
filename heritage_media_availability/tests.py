@@ -7,7 +7,7 @@ Django creates a separate throwaway test database, so your real data is safe.
 
 import os
 import runpy
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest import mock
 
@@ -23,20 +23,80 @@ from django.utils import timezone
 from config.env import env_bool, env_list, env_required, parse_database_url
 
 from .models import ClosedMonth, Member, Submission
-from .months import days_in_month, month_label, validate_month
+from .months import days_in_month, month_label, upcoming_months, validate_month
 
 
-class HomePageTests(TestCase):
-    """The Week 1 placeholder page loads at the site root."""
+def at_utc(*args):
+    """Patch "now" to a fixed UTC moment, so date-dependent code is predictable in tests."""
+    return mock.patch('django.utils.timezone.now', return_value=datetime(*args, tzinfo=UTC))
 
-    def test_home_page_loads(self):
-        response = self.client.get(reverse('heritage_media_availability:home'))
+
+class TeamFormPageTests(TestCase):
+    """The team form page at "/" (TF-1 to TF-4)."""
+
+    url = reverse('heritage_media_availability:team_form')
+
+    def test_form_is_the_public_site_root(self):
+        # TF-1: one shared link, no login. The link is the bare domain.
+        self.assertEqual(self.url, '/')
+        response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Heritage Media Availability')
+        self.assertContains(response, "Let the Scheduler know which days you can't serve.")
 
-    def test_home_is_the_site_root(self):
-        # The shared team link (TF-1) will be the bare domain, so "/" must work.
-        self.assertEqual(reverse('heritage_media_availability:home'), '/')
+    def test_name_dropdown_lists_active_members_sorted(self):
+        # TF-2: "First Last", A–Z by first then last name, active only.
+        Member.objects.create(first_name='jane', last_name='Doe')
+        Member.objects.create(first_name='Bob', last_name='Smith')
+        Member.objects.create(first_name='Bob', last_name='Jones')
+        Member.objects.create(first_name='Ann', last_name='Gone', is_active=False)
+        names = [label for value, label in self.client.get(self.url).context['form'].fields['member'].choices]
+        self.assertEqual(names, ['Choose your name', 'Bob Jones', 'Bob Smith', 'jane Doe'])
+
+    def test_month_dropdown_offers_current_month_plus_six(self):
+        with at_utc(2026, 10, 1, 12, 0):
+            choices = self.client.get(self.url).context['form'].fields['month'].choices
+        self.assertEqual(choices[0], ('', 'Choose a month'))
+        self.assertEqual(
+            [value for value, label in choices[1:]],
+            ['2026-10', '2026-11', '2026-12', '2027-01', '2027-02', '2027-03', '2027-04'],
+        )
+        self.assertEqual(choices[2][1], 'November 2026')
+
+    def test_no_month_is_preselected(self):
+        response = self.client.get(self.url)
+        self.assertContains(response, '<option value="" selected>Choose a month</option>', html=True)
+
+    def test_closed_month_is_labeled_and_marked_for_the_script(self):
+        # TF-3 label and the data-closed marker the TF-4 script reads.
+        ClosedMonth.objects.create(month='2026-11')
+        with at_utc(2026, 10, 1, 12, 0):
+            response = self.client.get(self.url)
+        self.assertContains(response, '<option value="2026-11" data-closed>November 2026 (closed)</option>', html=True)
+        self.assertContains(response, '<option value="2026-12">December 2026</option>', html=True)
+
+    def test_closed_message_text_is_on_the_page(self):
+        # TF-4: exact wording. Showing and hiding it is covered by the manual test steps.
+        self.assertContains(self.client.get(self.url), "This month's schedule is finalized. Please text Skye with any changes.")
+
+
+class UpcomingMonthsTests(SimpleTestCase):
+    """TF-3: the month window is based on today's date in Eastern time."""
+
+    def test_wraps_into_next_year(self):
+        with at_utc(2026, 9, 15, 12, 0):
+            self.assertEqual(
+                upcoming_months(),
+                ['2026-09', '2026-10', '2026-11', '2026-12', '2027-01', '2027-02', '2027-03'],
+            )
+
+    def test_uses_eastern_time_not_utc(self):
+        # 3 am UTC on Dec 1 is still 10 pm Nov 30 in New York, so November is "current".
+        with at_utc(2026, 12, 1, 3, 0):
+            self.assertEqual(upcoming_months()[0], '2026-11')
+        # 6 am UTC on Dec 1 is 1 am Dec 1 in New York.
+        with at_utc(2026, 12, 1, 6, 0):
+            self.assertEqual(upcoming_months()[0], '2026-12')
 
 
 class ParseDatabaseUrlTests(SimpleTestCase):
