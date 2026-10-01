@@ -11,6 +11,10 @@ import calendar
 import re
 
 from django.core.exceptions import ValidationError
+from django.utils import timezone
+
+# TF-3: the team can submit for the current month plus this many months ahead.
+MONTHS_AHEAD = 6
 
 # Four-digit year, a dash, then 01–12. Shared with the database CHECK
 # constraints in models.py so Python and Postgres agree on what's valid.
@@ -43,3 +47,25 @@ def days_in_month(month):
     year, number = split_month(month)
     # monthrange returns (weekday of the 1st, number of days); we need the second.
     return calendar.monthrange(year, number)[1]
+
+
+def upcoming_months():
+    """
+    TF-3: the months the team form offers, oldest first.
+
+    The current month plus MONTHS_AHEAD more, e.g. on Oct 1, 2026:
+    ["2026-10", "2026-11", ..., "2027-04"]. Past months are never included.
+
+    "Current" uses today's date in Eastern time (settings.TIME_ZONE), so at
+    11 pm Eastern on Nov 30 it's still November, even though it's already
+    December 1 in UTC, which is how the server stores times.
+    """
+    today = timezone.localdate()
+    months = []
+    for offset in range(MONTHS_AHEAD + 1):
+        # Count months from year 0 so adding an offset rolls over the year
+        # naturally: December (index 11) + 1 becomes January of the next year.
+        index = today.year * 12 + (today.month - 1) + offset
+        year, number = divmod(index, 12)
+        months.append(f'{year}-{number + 1:02d}')
+    return months

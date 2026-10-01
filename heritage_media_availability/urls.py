@@ -8,10 +8,10 @@ from django.urls import path
 
 from . import views
 
-# Namespacing lets templates say {% url 'heritage_media_availability:home' %}
+# Namespacing lets templates say {% url 'heritage_media_availability:team_form' %}
 # without clashing with URL names from Django's own apps.
 app_name = 'heritage_media_availability'
 
 urlpatterns = [
-    path('', views.home, name='home'),
+    path('', views.team_form, name='team_form'),
 ]
