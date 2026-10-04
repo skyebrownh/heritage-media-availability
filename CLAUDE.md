@@ -69,20 +69,55 @@ Write good explanatory comments throughout. I'll be reading this code to learn f
 - Closing an issue any way other than merging its PR
 - Changing repo settings, deleting branches on GitHub, or editing milestones and labels beyond adding new ones I've agreed to
 
+### Conventions we've settled on
+
+Formats and routines for each step of the loop above. Recent issues and PRs (e.g. #9 and PR #19) show them in practice.
+
+- **Plan comments.** Post the approved plan on the issue under a `## Plan (approved)` heading. Put any decisions made while planning first (with the date if they belong in SPEC.md), then the branch name, then numbered steps by file, then what's deliberately not included. If the build has to differ from the plan, say so in the handover and the PR.
+- **Handing work over for review.** Before asking to commit, give me:
+  - what changed, as a short list with a link to each file;
+  - the automated test result (count, pass or fail) and that `check --deploy` is clean;
+  - numbered manual test steps, saying exactly what to click and what I should see;
+  - a suggested commit message.
+
+  Then wait. If testing turns something up, fix it on the same branch, and add a regression test when it's a bug.
+- **Commit messages.** Use the issue's title, plus the co-author line.
+- **PR descriptions.** Follow the template:
+  - `Closes #N`;
+  - "What changed" by file;
+  - the issue's acceptance criteria copied and ticked, with the test count on the tests line;
+  - numbered "How to test" steps;
+  - the checklist, with a reason for any box that doesn't apply (e.g. "no model changes").
+
+  Use the issue's milestone and labels.
+- **Squash merging.** Title the squash commit `<issue title> (#<PR number>)`, e.g. `gh pr merge 19 --squash --subject "Pre-fill a person's earlier submission for the month (#19)"`.
+- **After a merge:**
+  1. `git checkout main && git pull --ff-only`
+  2. Confirm `git diff main <branch>` is empty.
+  3. `git branch -D <branch>` (needed because squash merging changes the commit, so git doesn't see the branch as merged).
+  4. `git fetch --prune`
+  5. Check the issue closed.
+  6. Remind me what to check on Railway.
+
+  GitHub deletes the remote branch automatically.
+- **Ideas that come up mid-issue** become a new issue, or a comment on an existing one (e.g. design ideas go on the polish issue, #14), never extra scope on the current branch.
+- **Long text for `gh`** (issue bodies, plan comments, PR descriptions) goes in a file in the scratchpad directory, passed with `--body-file`, so quotes and backticks survive the shell.
+
 ### Stack (do not change without asking)
 
 - Repo and folder: `heritage-media-availability`
 - Django project package: `config`. Django app: `heritage_media_availability` (underscores, because Python module names can't contain hyphens)
 - Python 3.12+ and current stable Django
 - Server-rendered Django templates; no React, Vue, or other SPA framework
-- Tailwind CSS via CDN; small vanilla JavaScript (or Alpine.js if I approve) for the calendar toggles and copy buttons
+- Tailwind CSS: from the CDN for now. Before launch it moves to pre-built CSS made with Tailwind's standalone CLI (a single binary, no Node or npm) and served by WhiteNoise. That change was approved 2026-10-01 and is tracked in #14.
+- Small vanilla JavaScript (or Alpine.js if I approve) for the calendar toggles and copy buttons
 - Postgres everywhere: my local Postgres for development, Railway Postgres in production, both via `DATABASE_URL`
 - Hosting: Railway (Hobby plan), deployed from GitHub
 - gunicorn serves the app in production; WhiteNoise serves static files (CSS, JS, admin styles)
 - Django's built-in test runner for tests
 - Approved packages: `django`, `psycopg[binary]`, `gunicorn`, `whitenoise`. Anything else needs approval first.
 - `DATABASE_URL` is parsed with the standard library (`config/env.py`), not dj-database-url. Local `.env` is loaded with `uv run --env-file .env`, not python-dotenv.
-- Static files use WhiteNoise's `CompressedStaticFilesStorage` (no filename hashing), so tests don't need `collectstatic` first. Only the admin has static files; Tailwind comes from the CDN.
+- Static files use WhiteNoise's `CompressedStaticFilesStorage` (no filename hashing), so tests don't need `collectstatic` first. Only the admin has static files until #14 adds the pre-built Tailwind CSS.
 - `check --deploy` warnings mail.E001, security.W005 and security.W021 are silenced on purpose (reasons in `config/settings.py`). Revisit if we add a custom domain.
 
 ### Secrets and security

@@ -198,7 +198,7 @@ Recommendation: one Django app with server-rendered pages and Postgres, hosted o
 | Layer             | Choice                            | Why                                                                                                                             |
 | ----------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | Backend           | Django (Python)                   | The built-in admin handles the roster and closed months with almost no code, and built-in login protects the admin pages        |
-| Pages             | Django templates + Tailwind (CDN) | Server-rendered HTML is fast on phones and simple to vibe-code                                                                  |
+| Pages | Django templates + Tailwind (CDN now; pre-built CSS before launch) | Server-rendered HTML is fast on phones and simple to vibe-code; pre-built CSS avoids building styles on every phone |
 | Calendar and copy | Small vanilla JS, or Alpine.js    | Day toggles and the clipboard copy don't need a framework                                                                       |
 | Database          | Postgres on Railway               | Managed, backed up, one click to add                                                                                            |
 | Hosting           | Railway Hobby                     | $5/month including $5 of usage, which a 20-person form won't exceed ([Railway pricing](https://docs.railway.com/pricing/plans)) |

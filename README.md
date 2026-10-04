@@ -23,7 +23,7 @@ v1 is in development, with launch to the full team planned for **October 25, 202
 
 - Python 3.13, Django (server-rendered templates)
 - Postgres everywhere (local and production), configured with `DATABASE_URL`
-- Tailwind CSS via CDN and a little vanilla JavaScript
+- Tailwind CSS (from the CDN for now; pre-built CSS before launch, see #14) and a little vanilla JavaScript
 - gunicorn + WhiteNoise in production
 - Hosted on [Railway](https://railway.com), deployed automatically from `main`
 - [uv](https://docs.astral.sh/uv/) for Python packages and commands
