@@ -216,7 +216,7 @@ The form launches October 25, the day November availability requests normally go
 Three build weeks and a pilot week before launch (2026):
 
 | Week | Dates | Focus |
-| --- | --- |
+| --- | --- | --- |
 | 1 | Sep 28 – Oct 4 | Setup, roster, deploy |
 | 2 | Oct 5 – Oct 11 | Build the team form |
 | 3 | Oct 12 – Oct 18 | Build admin views |
