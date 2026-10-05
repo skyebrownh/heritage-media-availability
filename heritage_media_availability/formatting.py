@@ -4,9 +4,13 @@ Turning saved submissions into readable text.
 day_ranges() collapses runs of days ([3, 4, 5, 6, 7, 20] → 3-7 and 20).
 The TF-10 confirmation and TF-9 summary use it now; Week 3's copy formats
 (AD-7, "Bob: 3-7, 20") will reuse it, so all agree on how ranges are grouped.
+
+display_names() gives the short names ("Bob", "Bob J.") that Skye's
+dashboard and copy text use.
 """
 
 import calendar
+from collections import Counter
 
 from django.utils import timezone
 
@@ -81,6 +85,43 @@ def days_list(month, days):
     pieces = [format_range(first, last) for first, last in day_ranges(days)]
     _, number = split_month(month)
     return f'{calendar.month_abbr[number]} {", ".join(pieces)}'
+
+
+def display_names(members):
+    """
+    SPEC.md "Names in admin views and copy output": a short name for each member.
+
+    Returns {member id: name}. Each person gets their first name only, unless
+    another member in `members` shares it (ignoring capitalization), in which
+    case they get their last initial too: "Bob J." and "Bob S.". If two people
+    share both the first name and the last initial (Bob Jones, Bob Johnson),
+    those two get their full last name instead, so no two names on a page match.
+
+    Pass active members only: the rule compares against the active roster,
+    so an inactive Bob doesn't turn an active "Bob" into "Bob S.".
+    """
+    members = list(members)
+
+    def first_key(member):
+        # casefold() is a stronger lower(): "Bob" and "bob" compare equal.
+        return member.first_name.casefold()
+
+    def initial_key(member):
+        return (first_key(member), member.last_name[:1].casefold())
+
+    # How many people share each first name, and each first name + initial.
+    first_counts = Counter(first_key(member) for member in members)
+    initial_counts = Counter(initial_key(member) for member in members)
+
+    names = {}
+    for member in members:
+        if first_counts[first_key(member)] == 1:
+            names[member.pk] = member.first_name
+        elif initial_counts[initial_key(member)] == 1:
+            names[member.pk] = f'{member.first_name} {member.last_name[:1].upper()}.'
+        else:
+            names[member.pk] = f'{member.first_name} {member.last_name}'
+    return names
 
 
 def previous_summary(submission):

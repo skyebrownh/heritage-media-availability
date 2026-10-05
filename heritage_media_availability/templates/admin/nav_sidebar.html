@@ -1,0 +1,21 @@
+{% load i18n %}
+{% comment %}
+  The admin's side menu, with the "Availability" box (#20) added at the top
+  so Skye can jump to the dashboard from any admin page on desktop.
+  (Django hides this menu on phone-width screens; there, use the
+  breadcrumbs or the admin home.)
+
+  Django's own nav_sidebar.html has no blocks to extend, so this is a copy
+  of it (Django 6.1) with one added line, marked below. If a Django upgrade
+  changes the side menu, compare against
+  django/contrib/admin/templates/admin/nav_sidebar.html.
+{% endcomment %}
+<button class="sticky toggle-nav-sidebar" id="toggle-nav-sidebar" aria-label="{% translate 'Toggle navigation' %}"></button>
+<nav class="sticky" id="nav-sidebar" aria-label="{% translate 'Sidebar' %}">
+  <input type="search" id="nav-filter"
+         placeholder="{% translate 'Start typing to filter…' %}"
+         aria-label="{% translate 'Filter navigation items' %}">
+  {# Added: the dashboard link. #}
+  {% include "admin/heritage_media_availability/_availability_module.html" %}
+  {% include 'admin/app_list.html' with app_list=available_apps show_changelinks=False %}
+</nav>

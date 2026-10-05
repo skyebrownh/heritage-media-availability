@@ -76,8 +76,8 @@ IDs let you reference each requirement when prompting an AI coding tool or testi
 | --- | --- |
 | AD-1 | The admin area sits at a separate path behind Django's admin login (one superuser account, Skye). The login lasts about 30 days per device. |
 | AD-2 | Roster: add a person (first and last name, both required), edit their name, toggle active or inactive. The first + last name pair is unique regardless of capitalization. Inactive people leave the dropdown and tracker, but their past submissions stay. No hard delete in v1. |
-| AD-3 | A month selector covers past months (read-only reference) through 6 months ahead. |
-| AD-4 | The response tracker lists every active member as Responded or Not responded, with the last-submitted time and a count like "12 of 17 responded." |
+| AD-3 | A month selector covers past months (read-only reference) through 6 months ahead. Past months are offered if they have any submission or were ever closed. The dashboard opens on next month, the one usually being collected. |
+| AD-4 | The response tracker lists every active member as Responded or Not responded, with the last-submitted time and a count like "12 of 17 responded." Members added to the roster after a month ended aren't listed for it, unless they submitted for it. Inactive members who submitted for the month appear in a separate "No longer active" section at the bottom, by full name; they're left out of the count and all copy text. |
 | AD-5 | The by-person view lists each member's unavailable days in compact ranges, any all-month choice, and their notes. |
 | AD-6 | The by-date view lists each day of the month that has anyone unavailable, with who's out. Days with nobody out are skipped, matching the copy text below. People marked "unavailable all month" are not repeated on each day; they're listed once in a note at the top of the view. |
 | AD-7 | The by-person and by-date views each have a copy button that copies their text format below to the clipboard. |
@@ -85,7 +85,7 @@ IDs let you reference each requirement when prompting an AI coding tool or testi
 
 ### Names in admin views and copy output
 
-The tracker, by-person and by-date views, and both copy formats show each person's **display name**: their first name only, plus their last initial when another active member shares that first name (ignoring capitalization), e.g. "Bob J." and "Bob S.". Lists are sorted A–Z by first name, then last name.
+The tracker, by-person and by-date views, and both copy formats show each person's **display name**: their first name only, plus their last initial when another active member listed for that month shares that first name (ignoring capitalization), e.g. "Bob J." and "Bob S.". If two of them also share a last initial (Bob Jones and Bob Johnson), those two show their full last name instead. Lists are sorted A–Z by first name, then last name. The "No longer active" section uses full names ("Bob Smith"), since it's never part of copy text.
 
 ### Copy formats
 
@@ -242,3 +242,4 @@ Spec decisions that aren't captured in a requirement above, with the date they w
 
 - 2026-09-28: TF-9 pre-fill loads the earlier submission with a small JavaScript fetch, so picking a name and month doesn't reload the page.
 - 2026-10-01: If someone is marked inactive while their form is open, their submission is still accepted. The name dropdown shows active members only, but the server accepts any member on the roster.
+- 2026-10-03: The app only stores whether someone is active *now*, so a past month can't know who was active then. Rather than add a table tracking when people became inactive (only works going forward), the dashboard lists today's active members minus anyone added after the month ended, plus a "No longer active" section for inactive members who responded to that month (AD-4). Accepted gap: an inactive member who didn't respond to a past month isn't shown as "Not responded".

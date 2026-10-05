@@ -25,7 +25,8 @@ from django.utils.html import escape
 
 from config.env import env_bool, env_list, env_required, parse_database_url
 
-from .formatting import confirmation_message, day_ranges, days_list, previous_summary
+from .dashboard import default_month, month_options, month_responses
+from .formatting import confirmation_message, day_ranges, days_list, display_names, previous_summary
 from .forms import CLOSED_MONTH_MESSAGE
 from .models import ClosedMonth, Member, Submission
 from .months import days_in_month, month_label, month_weeks, upcoming_months, validate_month
@@ -799,6 +800,8 @@ class ClosedMonthAdminTests(TestCase):
         response = self.client.post(self.add_url, {'month': '2026-11'})
         self.assertContains(response, 'Close November 2026?')
         self.assertContains(response, 'Yes, close it')
+        # Breadcrumbs in Django 6's list markup, so the admin CSS styles them.
+        self.assertContains(response, '<li aria-current="page">Close November 2026</li>', html=True)
         self.assertFalse(ClosedMonth.objects.exists())
 
     def test_confirming_closes_the_month(self):
@@ -931,3 +934,223 @@ class SubmissionAdminTests(TestCase):
         self.assertEqual(detail.status_code, 200)
         self.assertNotContains(detail, 'name="notes"')
         self.assertTrue(Submission.objects.filter(pk=pk).exists())
+
+
+class DisplayNameTests(SimpleTestCase):
+    """SPEC.md "Names in admin views and copy output": short display names."""
+
+    def names(self, *full_names):
+        """Display names for unsaved members built from "First Last" strings, in the same order."""
+        members = [
+            Member(pk=number, first_name=name.split()[0], last_name=name.split()[1])
+            for number, name in enumerate(full_names, start=1)
+        ]
+        result = display_names(members)
+        return [result[member.pk] for member in members]
+
+    def test_unique_first_name_alone(self):
+        self.assertEqual(self.names('Bob Smith', 'Emily Jones'), ['Bob', 'Emily'])
+
+    def test_shared_first_name_adds_last_initial(self):
+        self.assertEqual(self.names('Bob Jones', 'Bob Smith', 'Emily Jones'), ['Bob J.', 'Bob S.', 'Emily'])
+
+    def test_shared_first_name_ignores_capitalization(self):
+        self.assertEqual(self.names('Bob Jones', 'bob smith'), ['Bob J.', 'bob S.'])
+
+    def test_shared_first_name_and_initial_uses_full_last_name(self):
+        # Only the colliding pair falls back to the full last name; Bob Smith keeps "Bob S.".
+        self.assertEqual(
+            self.names('Bob Jones', 'Bob Johnson', 'Bob Smith'),
+            ['Bob Jones', 'Bob Johnson', 'Bob S.'],
+        )
+
+
+class DashboardAccessTests(TestCase):
+    """The dashboard is behind the admin login (AD-1) and linked from the admin home."""
+
+    def test_logged_out_visitor_goes_to_login(self):
+        response = self.client.get(reverse('availability'))
+        self.assertRedirects(
+            response, f"{reverse('admin:login')}?next={reverse('availability')}", fetch_redirect_response=False
+        )
+
+    def test_logged_in_admin_sees_dashboard(self):
+        self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
+        response = self.client.get(reverse('availability'))
+        self.assertContains(response, 'Availability for')
+        self.assertContains(response, 'id="tracker"')
+        # Breadcrumbs use Django 6's list markup, which the admin CSS styles
+        # (an old-style <div class="breadcrumbs"> shows unstyled).
+        self.assertContains(response, '<ol class="breadcrumbs">')
+        # Placeholders for the next issues' views.
+        self.assertContains(response, 'id="by-person"')
+        self.assertContains(response, 'id="by-date"')
+
+    def test_admin_home_links_to_dashboard(self):
+        self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
+        response = self.client.get(reverse('admin:index'))
+        self.assertContains(response, f'href="{reverse("availability")}"')
+        # The usual roster links are still there.
+        self.assertContains(response, reverse('admin:heritage_media_availability_member_changelist'))
+
+    def test_side_menu_links_to_dashboard_on_other_admin_pages(self):
+        self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
+        response = self.client.get(reverse('admin:heritage_media_availability_member_changelist'))
+        self.assertContains(response, 'id="nav-sidebar"')
+        self.assertContains(response, f'href="{reverse("availability")}"')
+        # On the dashboard itself, the side menu marks it as the current page.
+        response = self.client.get(reverse('availability'))
+        self.assertContains(response, 'aria-current="page">View the team\'s availability', html=False)
+
+
+class DashboardMonthTests(TestCase):
+    """AD-3: the dashboard's month selector and the month it opens on."""
+
+    def setUp(self):
+        self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
+        bob = Member.objects.create(first_name='Bob', last_name='Smith')
+        # August has a submission, July was closed, June has neither.
+        Submission.objects.create(member=bob, month='2026-08', kind='available_all')
+        ClosedMonth.objects.create(month='2026-07')
+        ClosedMonth.objects.create(month='2026-11')
+
+    def test_opens_on_next_month(self):
+        with at_utc(2026, 10, 5, 16, 0):
+            self.assertEqual(default_month(), '2026-11')
+            response = self.client.get(reverse('availability'))
+        self.assertContains(response, 'Availability for November 2026')
+
+    def test_options_list_past_months_with_data_then_upcoming(self):
+        with at_utc(2026, 10, 5, 16, 0):
+            past, upcoming = month_options()
+        self.assertEqual(past, [('2026-07', 'July 2026 (closed)'), ('2026-08', 'August 2026')])
+        self.assertEqual([month for month, _ in upcoming], upcoming_months_from('2026-10'))
+        self.assertIn(('2026-11', 'November 2026 (closed)'), upcoming)
+
+    def test_past_month_can_be_chosen(self):
+        with at_utc(2026, 10, 5, 16, 0):
+            response = self.client.get(reverse('availability'), {'month': '2026-08'})
+        self.assertContains(response, 'Availability for August 2026')
+        self.assertContains(response, '<option value="2026-08" selected>', html=False)
+
+    def test_unlisted_or_bad_month_falls_back_to_next_month(self):
+        with at_utc(2026, 10, 5, 16, 0):
+            for value in ['2026-06', '2030-01', 'junk', '']:
+                with self.subTest(month=value):
+                    response = self.client.get(reverse('availability'), {'month': value})
+                    self.assertContains(response, 'Availability for November 2026')
+
+
+def upcoming_months_from(first):
+    """The 7 months starting at `first` ("YYYY-MM"), to compare with the dashboard's options."""
+    year, number = map(int, first.split('-'))
+    months = []
+    for offset in range(7):
+        y, n = divmod(year * 12 + number - 1 + offset, 12)
+        months.append(f'{y}-{n + 1:02d}')
+    return months
+
+
+class TrackerTests(TestCase):
+    """AD-4 and decision 2026-10-03: who's listed for a month, and their status."""
+
+    def setUp(self):
+        # Everyone joined the roster well before October 2026.
+        with at_utc(2026, 9, 1, 12, 0):
+            self.bob = Member.objects.create(first_name='Bob', last_name='Smith')
+            self.amy = Member.objects.create(first_name='Amy', last_name='Lee')
+            self.cara = Member.objects.create(first_name='Cara', last_name='Diaz')
+
+    def submit(self, member, month='2026-10', when=(2026, 10, 2, 19, 15), **fields):
+        """Save a submission at a fixed UTC time (default: Oct 2, 3:15 pm Eastern)."""
+        fields.setdefault('kind', 'available_all')
+        return Submission.objects.create(
+            member=member, month=month, submitted_at=datetime(*when, tzinfo=UTC), **fields
+        )
+
+    def test_lists_active_members_a_to_z_with_status(self):
+        self.submit(self.bob)
+        responses = month_responses('2026-10')
+        self.assertEqual([r.name for r in responses.active], ['Amy', 'Bob', 'Cara'])
+        self.assertEqual([r.responded for r in responses.active], [False, True, False])
+        self.assertEqual((responses.responded_count, responses.total), (1, 3))
+
+    def test_page_shows_count_status_and_time(self):
+        self.submit(self.bob)
+        self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
+        response = self.client.get(reverse('availability'), {'month': '2026-10'})
+        self.assertContains(response, '1 of 3 responded')
+        self.assertContains(response, 'Not responded', count=2)
+        # 19:15 UTC is 3:15 pm in New York.
+        self.assertContains(response, 'Oct 2, 3:15 p.m.')
+        self.assertNotContains(response, 'id="no-longer-active"')
+
+    def test_any_submission_counts_as_a_response(self):
+        self.submit(self.amy, kind='days', days=[3])
+        self.submit(self.bob, kind='available_all')
+        self.submit(self.cara, kind='unavailable_all')
+        self.assertEqual(month_responses('2026-10').responded_count, 3)
+
+    def test_newest_submission_is_the_current_one(self):
+        self.submit(self.bob, kind='days', days=[3], when=(2026, 10, 1, 12, 0))
+        newest = self.submit(self.bob, kind='days', days=[9], when=(2026, 10, 3, 12, 0))
+        bob = month_responses('2026-10').active[1]
+        self.assertEqual(bob.submission, newest)
+
+    def test_other_months_submissions_dont_count(self):
+        self.submit(self.bob, month='2026-11')
+        self.assertEqual(month_responses('2026-10').responded_count, 0)
+
+    def test_inactive_member_who_responded_is_listed_separately(self):
+        self.submit(self.cara)
+        self.cara.is_active = False
+        self.cara.save()
+        responses = month_responses('2026-10')
+        self.assertEqual([r.name for r in responses.active], ['Amy', 'Bob'])
+        self.assertEqual([r.name for r in responses.inactive], ['Cara Diaz'])
+        self.assertEqual((responses.responded_count, responses.total), (0, 2))
+
+        self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
+        response = self.client.get(reverse('availability'), {'month': '2026-10'})
+        self.assertContains(response, 'id="no-longer-active"')
+        self.assertContains(response, 'Cara Diaz')
+        self.assertContains(response, '0 of 2 responded')
+
+    def test_inactive_member_who_didnt_respond_is_not_listed(self):
+        self.cara.is_active = False
+        self.cara.save()
+        responses = month_responses('2026-10')
+        self.assertNotIn('Cara', [r.name for r in responses.active])
+        self.assertEqual(responses.inactive, [])
+
+    def test_member_added_after_month_ended_is_not_listed(self):
+        # 5 am UTC on Nov 1 is 1 am Nov 1 in New York: after October ended.
+        with at_utc(2026, 11, 1, 5, 0):
+            Member.objects.create(first_name='Dan', last_name='Ng')
+        self.assertNotIn('Dan', [r.name for r in month_responses('2026-10').active])
+        self.assertIn('Dan', [r.name for r in month_responses('2026-11').active])
+
+    def test_member_added_on_last_evening_of_month_is_listed(self):
+        # 3 am UTC on Nov 1 is still 11 pm Oct 31 in New York.
+        with at_utc(2026, 11, 1, 3, 0):
+            Member.objects.create(first_name='Dan', last_name='Ng')
+        self.assertIn('Dan', [r.name for r in month_responses('2026-10').active])
+
+    def test_member_added_later_who_submitted_is_listed(self):
+        with at_utc(2026, 11, 1, 5, 0):
+            dan = Member.objects.create(first_name='Dan', last_name='Ng')
+        self.submit(dan, when=(2026, 11, 2, 12, 0))
+        responses = month_responses('2026-10')
+        self.assertIn('Dan', [r.name for r in responses.active])
+        self.assertEqual(responses.responded_count, 1)
+
+    def test_display_names_compare_people_listed_for_the_month(self):
+        # A second Bob (lowercase, to check capitalization is ignored) joins in November.
+        with at_utc(2026, 11, 1, 5, 0):
+            Member.objects.create(first_name='bob', last_name='Jones')
+        # October doesn't list him, so Bob Smith is just "Bob" there...
+        self.assertEqual([r.name for r in month_responses('2026-10').active], ['Amy', 'Bob', 'Cara'])
+        # ...but from November both Bobs need their initials. Sorted by last name too, ignoring case.
+        self.assertEqual(
+            [r.name for r in month_responses('2026-11').active], ['Amy', 'bob J.', 'Bob S.', 'Cara']
+        )

@@ -47,6 +47,11 @@ CSRF_FAILURE_VIEW = 'heritage_media_availability.views.csrf_failure'
 # Application definition
 
 INSTALLED_APPS = [
+    # Our app: the team form and Skye's admin views. Listed first so its
+    # templates win over Django's when they share a name: that's how
+    # templates/admin/index.html and nav_sidebar.html add the dashboard
+    # link to the admin home and side menu.
+    'heritage_media_availability',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -55,8 +60,6 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     # Postgres-only features that ship with Django; needed for Submission.days (ArrayField).
     'django.contrib.postgres',
-    # Our app: the team form and Skye's admin views.
-    'heritage_media_availability',
 ]
 
 MIDDLEWARE = [
