@@ -24,6 +24,11 @@
   .status-yes { background: var(--message-success-bg); }
   .status-no { background: var(--message-error-bg); }
   .availability-note { color: var(--body-quiet-color); }
+  /* AD-5: notes sit on their own quieter line under the answer, instead of a third column that would squeeze phones. */
+  .answer-notes { display: block; margin-top: 4px; color: var(--body-quiet-color); font-style: italic; }
+  /* AD-7: the copy text, shown exactly as it will be copied. pre-wrap keeps the
+     line breaks but lets a long line wrap instead of scrolling sideways. */
+  .copy-text { white-space: pre-wrap; background: var(--darkened-bg); padding: 12px; margin: 0 0 12px; font-size: 1rem; }
 </style>
 {% endblock %}
 
@@ -96,10 +101,36 @@
     {% endif %}
   </div>
 
-  {# AD-5: filled in by #21. #}
+  {# AD-5: each active member's answer, in the same order as the copy text: responders A-Z, then non-responders A-Z. #}
   <div class="module availability-module" id="by-person">
     <h2>By person</h2>
-    <p class="availability-note">Coming soon.</p>
+    {% if responses.active %}
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Answer</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for response in responses.by_person %}
+            <tr>
+              <th scope="row">{{ response.name }}</th>
+              <td>
+                {{ response.answer }}
+                {# Notes are typed by volunteers: Django escapes them, and linebreaksbr keeps their line breaks. #}
+                {% if response.submission.notes %}<span class="answer-notes">{{ response.submission.notes|linebreaksbr }}</span>{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {# AD-7: exactly the text the copy button (#23) will copy. Kept on one line in the template so no stray spaces or blank lines end up in it. #}
+      <h3 id="by-person-text-label">Copy text</h3>
+      <pre class="copy-text" id="by-person-text" aria-labelledby="by-person-text-label">{{ by_person_text }}</pre>
+    {% else %}
+      <p class="availability-note">No one on the roster was on the team for this month.</p>
+    {% endif %}
   </div>
 
   {# AD-6: filled in by #22. #}
@@ -113,11 +144,12 @@
     <div class="module availability-module" id="no-longer-active">
       <h2>No longer active</h2>
       <p class="availability-note">These people responded for this month but are no longer active. They aren't counted above or included in copy text.</p>
+      {# Everyone here responded (the note above says so), so an Answer column replaces the always-"Responded" Status column. #}
       <table>
         <thead>
           <tr>
             <th scope="col">Name</th>
-            <th scope="col">Status</th>
+            <th scope="col">Answer</th>
             <th scope="col">Last submitted</th>
           </tr>
         </thead>
@@ -125,7 +157,10 @@
           {% for response in responses.inactive %}
             <tr>
               <th scope="row">{{ response.name }}</th>
-              <td><span class="status status-yes">Responded</span></td>
+              <td>
+                {{ response.answer }}
+                {% if response.submission.notes %}<span class="answer-notes">{{ response.submission.notes|linebreaksbr }}</span>{% endif %}
+              </td>
               <td>{{ response.submission.submitted_at|date:"M j, g:i a" }}</td>
             </tr>
           {% endfor %}

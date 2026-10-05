@@ -20,7 +20,7 @@ from django.contrib.admin.models import LogEntry
 from django.utils import timezone
 
 from .models import ClosedMonth, Member, Submission
-from .months import shift_month
+from .months import days_in_month, shift_month
 
 # Our app's label in Django, used to find its History entries.
 APP_LABEL = 'heritage_media_availability'
@@ -132,6 +132,41 @@ def load_dashboard():
     ClosedMonth.objects.create(month=last_month)
 
 
+def next_31_day_month():
+    """The first month after this one with 31 days (at most two months away), e.g. "2026-12" in October."""
+    offset = 1
+    while days_in_month(shift_month(this_month(), offset)) != 31:
+        offset += 1
+    return shift_month(this_month(), offset)
+
+
+def load_spec_example():
+    """
+    The people and answers from SPEC.md's copy-format examples, so the copy
+    text on the dashboard can be compared with the spec line by line.
+
+    Uses the next 31-day month, because Jane's "27-31" needs a day 31.
+    Extras the spec's example doesn't show, which must not change the copy text:
+    Bob's note (notes are never copied) and Pat (inactive, so never copied).
+    """
+    Kind = Submission.Kind
+    month = next_31_day_month()
+    bob = add_member('Bob', 'Smith')
+    emily = add_member('Emily', 'Davis')
+    jane = add_member('Jane', 'Lopez')
+    jim = add_member('Jim', 'Brown')
+    sam = add_member('Sam', 'Wilson')
+    add_member('Tom', 'Clark')  # Tom doesn't respond.
+    pat = add_member('Pat', 'Rivera', active=False)
+
+    add_submission(bob, month, Kind.DAYS, days=[3, 4, 5, 6, 7, 20], notes="Can't make rehearsal on the 19th.")
+    add_submission(emily, month, Kind.DAYS, days=[13])
+    add_submission(jane, month, Kind.DAYS, days=[1, 4, 10, 11, 27, 28, 29, 30, 31])
+    add_submission(jim, month, Kind.AVAILABLE_ALL)
+    add_submission(sam, month, Kind.UNAVAILABLE_ALL)
+    add_submission(pat, month, Kind.DAYS, days=[2])
+
+
 @dataclass
 class Scenario:
     """One named starting state: what `seed --list` says about it, and the function that loads it."""
@@ -148,5 +183,10 @@ SCENARIOS = {
         "The roster plus next month's answers (every kind, a resubmission, two non-responders) "
         'and a closed last month with a few answers. For the dashboard (#20).',
         load_dashboard,
+    ),
+    'spec-example': Scenario(
+        "SPEC.md's copy-format example (Bob, Emily, Jane, Jim, Sam, Tom) in the next 31-day month, "
+        'plus a note and an inactive responder that must not appear in copy text. For #21 and #22.',
+        load_spec_example,
     ),
 }
