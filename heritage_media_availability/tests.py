@@ -9,6 +9,7 @@ import os
 import runpy
 import re
 from datetime import UTC, date, datetime, timedelta
+from io import StringIO
 from pathlib import Path
 from unittest import mock
 
@@ -16,9 +17,10 @@ from django.conf import settings
 from django.contrib.admin.models import DELETION, LogEntry
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ImproperlyConfigured, ValidationError
-from django.db import IntegrityError, transaction
+from django.core.management import CommandError, call_command
+from django.db import IntegrityError, connection, transaction
 from django.db.models import ProtectedError
-from django.test import Client, SimpleTestCase, TestCase
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import escape
@@ -29,7 +31,8 @@ from .dashboard import default_month, month_options, month_responses
 from .formatting import confirmation_message, day_ranges, days_list, display_names, previous_summary
 from .forms import CLOSED_MONTH_MESSAGE
 from .models import ClosedMonth, Member, Submission
-from .months import days_in_month, month_label, month_weeks, upcoming_months, validate_month
+from .months import days_in_month, month_label, month_weeks, shift_month, upcoming_months, validate_month
+from .seeding import SCENARIOS
 
 
 def at_utc(*args):
@@ -1043,12 +1046,7 @@ class DashboardMonthTests(TestCase):
 
 def upcoming_months_from(first):
     """The 7 months starting at `first` ("YYYY-MM"), to compare with the dashboard's options."""
-    year, number = map(int, first.split('-'))
-    months = []
-    for offset in range(7):
-        y, n = divmod(year * 12 + number - 1 + offset, 12)
-        months.append(f'{y}-{n + 1:02d}')
-    return months
+    return [shift_month(first, offset) for offset in range(7)]
 
 
 class TrackerTests(TestCase):
@@ -1154,3 +1152,119 @@ class TrackerTests(TestCase):
         self.assertEqual(
             [r.name for r in month_responses('2026-11').active], ['Amy', 'bob J.', 'Bob S.', 'Cara']
         )
+
+
+class ShiftMonthTests(SimpleTestCase):
+    """shift_month() moves forward and back across year boundaries."""
+
+    def test_forward_and_back(self):
+        self.assertEqual(shift_month('2026-10', 1), '2026-11')
+        self.assertEqual(shift_month('2026-12', 1), '2027-01')
+        self.assertEqual(shift_month('2026-01', -1), '2025-12')
+        self.assertEqual(shift_month('2026-10', 0), '2026-10')
+        self.assertEqual(shift_month('2026-10', 14), '2027-12')
+
+
+def seed(*args, answer=None):
+    """Run `manage.py seed` and return its output. `answer` is typed at the confirmation prompt."""
+    out = StringIO()
+    if answer is None:
+        call_command('seed', *args, '--no-input', stdout=out)
+    else:
+        with mock.patch('builtins.input', return_value=answer):
+            call_command('seed', *args, stdout=out)
+    return out.getvalue()
+
+
+# The test runner always sets DEBUG off; seed refuses without it.
+@override_settings(DEBUG=True)
+class SeedCommandTests(TestCase):
+    """#26: `manage.py seed` resets local data and loads a scenario, safely."""
+
+    def setUp(self):
+        self.admin = get_user_model().objects.create_superuser('skye', password='test-pass-123')
+        # Some existing data the reset should remove.
+        old = Member.objects.create(first_name='Old', last_name='Member')
+        Submission.objects.create(member=old, month='2026-11', kind='available_all')
+        ClosedMonth.objects.create(month='2026-12')
+
+    def test_refuses_when_debug_is_off(self):
+        with override_settings(DEBUG=False):
+            with self.assertRaisesMessage(CommandError, 'DEBUG is off'):
+                seed('roster')
+        self.assertTrue(Member.objects.filter(first_name='Old').exists())
+
+    def test_refuses_on_a_database_that_isnt_local(self):
+        with mock.patch.dict(connection.settings_dict, {'HOST': 'postgres.railway.internal'}):
+            with self.assertRaisesMessage(CommandError, 'not this computer'):
+                seed('roster')
+        self.assertTrue(Member.objects.filter(first_name='Old').exists())
+
+    def test_anything_but_yes_cancels(self):
+        output = seed('roster', answer='no')
+        self.assertIn('Nothing was changed', output)
+        self.assertTrue(Member.objects.filter(first_name='Old').exists())
+
+    def test_yes_resets_and_loads(self):
+        output = seed('roster', answer='yes')
+        self.assertIn('Loaded "roster": 9 members, 0 submissions, 0 closed months', output)
+        self.assertFalse(Member.objects.filter(first_name='Old').exists())
+        self.assertFalse(ClosedMonth.objects.exists())
+
+    def test_keeps_admin_accounts_and_their_history(self):
+        member = Member.objects.get(first_name='Old')
+        LogEntry.objects.log_actions(self.admin.pk, [member], 1, change_message='Added.', single_object=True)
+        LogEntry.objects.log_actions(self.admin.pk, [self.admin], 2, change_message='Changed.', single_object=True)
+        seed('roster')
+        self.assertTrue(get_user_model().objects.filter(username='skye').exists())
+        # History about our tables is cleared; History about admin accounts is kept.
+        self.assertEqual(list(LogEntry.objects.values_list('change_message', flat=True)), ['Changed.'])
+
+    def test_safe_to_run_twice(self):
+        seed('dashboard')
+        output = seed('dashboard')
+        self.assertIn('9 members, 9 submissions, 1 closed month.', output)
+
+    def test_list_shows_every_scenario(self):
+        output = seed('--list')
+        for name, details in SCENARIOS.items():
+            self.assertIn(f'{name}: {details.description}', output)
+
+    def test_unknown_or_missing_scenario_is_explained(self):
+        with self.assertRaisesMessage(CommandError, 'No scenario called "nope". Choose one of: roster, dashboard'):
+            seed('nope')
+        with self.assertRaisesMessage(CommandError, 'Name a scenario to load'):
+            seed()
+
+
+@override_settings(DEBUG=True)
+class DashboardScenarioTests(TestCase):
+    """#26: the dashboard scenario sets up #20's cases, dated from "today"."""
+
+    def setUp(self):
+        # Today is Oct 5, 2026 (noon Eastern): next month is November, last month September.
+        with at_utc(2026, 10, 5, 16, 0):
+            seed('dashboard')
+
+    def test_next_month(self):
+        responses = month_responses('2026-11')
+        self.assertEqual(
+            [r.name for r in responses.active],
+            ['Amy', 'Bob Johnson', 'Bob Jones', 'Bob S.', 'emily', 'Grace', 'Jack'],
+        )
+        self.assertEqual((responses.responded_count, responses.total), (4, 7))
+        self.assertEqual([r.name for r in responses.inactive], ['Henry Park'])
+        # emily resubmitted: the newer answer counts.
+        emily = next(r for r in responses.active if r.name == 'emily')
+        self.assertEqual(emily.submission.days, [12, 13])
+
+    def test_last_month_is_closed_and_hides_jack(self):
+        self.assertTrue(ClosedMonth.objects.filter(month='2026-09').exists())
+        responses = month_responses('2026-09')
+        self.assertNotIn('Jack', [r.name for r in responses.active])
+        # 9 people, minus Henry and Ivy (inactive) and Jack (joined after September): "3 of 6".
+        self.assertEqual((responses.responded_count, responses.total), (3, 6))
+
+    def test_no_upcoming_month_is_closed(self):
+        # Closing and reopening upcoming months is left for manual steps to do.
+        self.assertFalse(ClosedMonth.objects.filter(month__gte='2026-10').exists())

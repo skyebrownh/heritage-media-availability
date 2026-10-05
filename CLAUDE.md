@@ -77,10 +77,11 @@ Formats and routines for each step of the loop above. Recent issues and PRs (e.g
 - **Handing work over for review.** Before asking to commit, give me:
   - what changed, as a short list with a link to each file;
   - the automated test result (count, pass or fail) and that `check --deploy` is clean;
-  - numbered manual test steps, saying exactly what to click and what I should see;
+  - numbered manual test steps, saying exactly what to click and what I should see. They start with "0. Run `seed <scenario>`" and refer to the seeded people by name (see Test data below);
   - a suggested commit message.
 
   Then wait. If testing turns something up, fix it on the same branch, and add a regression test when it's a bug.
+- **Test data.** `manage.py seed <scenario>` resets my local database to a known starting state (scenarios live in `heritage_media_availability/seeding.py`). Seed the setup, not the behavior under test: anything a manual step exists to check (submitting, resubmitting, closing or reopening a month, marking someone inactive), I do by hand during the steps, and the steps say so. When an issue needs a different starting state, it adds or updates a scenario in its own PR.
 - **Commit messages.** Use the issue's title, plus the co-author line.
 - **PR descriptions.** Follow the template:
   - `Closes #N`;
@@ -155,6 +156,7 @@ All commands load local settings from `.env` (copy `.env.example` first).
 - Apply database migrations: `uv run --env-file .env python manage.py migrate`
 - Create admin user (local): `uv run --env-file .env python manage.py createsuperuser`
 - Create admin user (Railway): `railway ssh`, then `python manage.py createsuperuser` (or `changepassword <username>` to reset), then `exit`
+- Reset local data to a test scenario: `uv run --env-file .env python manage.py seed <scenario>` (`seed --list` shows them). Deletes all members, submissions and closed months first; keeps admin accounts. Refuses unless `DEBUG` is on and the database is local.
 - Make migrations after changing models: `uv run --env-file .env python manage.py makemigrations`
 - Create an issue: `gh issue create --template <feature.md|bug.md>` (or `--title`/`--body-file` with `--milestone` and `--label`)
 - Open a PR: `gh pr create --fill` then edit, or `--title`/`--body-file`
