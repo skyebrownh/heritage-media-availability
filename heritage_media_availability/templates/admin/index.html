@@ -1,0 +1,17 @@
+{% extends "admin/index.html" %}
+
+{% comment %}
+  The admin home page: Django's own, plus the "Availability" box above the
+  roster so Skye's dashboard (#20) is one click away.
+
+  This file has the same name as Django's, and extends it. Our app is listed
+  before django.contrib.admin in INSTALLED_APPS, so Django finds this file
+  first; the {% extends %} line then carries on to Django's copy.
+{% endcomment %}
+
+{% block content %}
+<div id="content-main" class="app-list">
+  {% include "admin/heritage_media_availability/_availability_module.html" %}
+  {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
+</div>
+{% endblock %}

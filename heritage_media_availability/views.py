@@ -2,20 +2,23 @@
 Views (page handlers) for the Heritage Media Availability app.
 
 The team-facing form lives at the site root, with its confirmation page at
-/thanks/ and a small JSON lookup for pre-filling (/last-submission/). Skye's pages are in Django admin for now; the Week 3 views will be
-added here.
+/thanks/ and a small JSON lookup for pre-filling (/last-submission/).
+Skye's availability dashboard lives inside the admin at /admin/availability/
+(see config/urls.py for how it's protected by the admin login).
 """
 
+from django.contrib import admin
 from django.core.exceptions import ValidationError
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods
 
+from .dashboard import default_month, month_options, month_responses
 from .formatting import confirmation_message, previous_summary
 from .forms import CLOSED_MONTH_MESSAGE, TeamForm
 from .models import Submission
-from .months import validate_month
+from .months import month_label, validate_month
 
 # Session key holding the id of this visitor's latest submission, so the
 # confirmation page knows what to restate without putting the id in the URL
@@ -129,3 +132,35 @@ def last_submission(request):
         'notes': submission.notes,
         'summary': previous_summary(submission),
     })
+
+
+@require_GET
+def availability_dashboard(request):
+    """
+    Skye's availability dashboard: month selector and response tracker (AD-3, AD-4).
+
+    Only reachable through admin.site.admin_view (config/urls.py), which sends
+    logged-out visitors to the admin login first (AD-1). The month comes from
+    ?month=2026-11; a missing or unlisted month falls back to next month,
+    so an old bookmark or a typo still shows something useful.
+    """
+    past, upcoming = month_options()
+    listed = {month for month, _ in past + upcoming}
+    month = request.GET.get('month')
+    if month not in listed:
+        month = default_month()
+
+    return render(
+        request,
+        'admin/heritage_media_availability/availability.html',
+        {
+            # The admin's own page context (site header, user links, dark
+            # mode), so the page matches the rest of the admin.
+            **admin.site.each_context(request),
+            'title': f'Availability for {month_label(month)}',
+            'month': month,
+            'past_months': past,
+            'upcoming_months': upcoming,
+            'responses': month_responses(month),
+        },
+    )

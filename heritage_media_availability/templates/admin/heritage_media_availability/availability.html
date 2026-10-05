@@ -1,0 +1,145 @@
+{% extends "admin/base_site.html" %}
+
+{% comment %}
+  Skye's availability dashboard (#20): one page per month.
+  Top: month selector (AD-3) and response tracker (AD-4).
+  Middle: places for the by-person and by-date views (#21, #22).
+  Bottom: "No longer active" people who responded (decision 2026-10-03).
+  Built on the admin's own page frame and styles, so it matches the rest
+  of the admin, including dark mode and its phone layout.
+{% endcomment %}
+
+{# A little page-specific styling. The colors are the admin's own variables, so dark mode works. #}
+{% block extrastyle %}{{ block.super }}
+<style>
+  /* Month picker row: wraps under itself on narrow phones. */
+  .availability-month { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 20px; }
+  /* Admin inputs are small by default; keep the picker and button at least 44px tall to tap. */
+  .availability-month select, .availability-month input[type="submit"] { min-height: 44px; font-size: 1rem; }
+  .availability-count { font-size: 1.125rem; margin: 0 0 12px; }
+  .availability-module table { width: 100%; }
+  .availability-module td, .availability-module th { font-size: 1rem; vertical-align: middle; }
+  /* Status badges: words carry the meaning; color only helps scanning. */
+  .status { display: inline-block; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .status-yes { background: var(--message-success-bg); }
+  .status-no { background: var(--message-error-bg); }
+  .availability-note { color: var(--body-quiet-color); }
+</style>
+{% endblock %}
+
+{# Breadcrumb trail back to the admin home. Same list markup as Django's own pages, which its CSS styles (the ">" separators come from that CSS too). #}
+{% block breadcrumbs %}
+<ol class="breadcrumbs">
+  <li><a href="{% url 'admin:index' %}">Home</a></li>
+  <li aria-current="page">Availability</li>
+</ol>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+
+  {# AD-3: month selector. A plain GET form, so each month has its own link (?month=2026-11) that can be bookmarked. #}
+  <form method="get" class="availability-month" id="month-form">
+    <label for="month-select">Month</label>
+    <select name="month" id="month-select">
+      {% if past_months %}
+        <optgroup label="Past months">
+          {% for value, label in past_months %}
+            <option value="{{ value }}"{% if value == month %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </optgroup>
+      {% endif %}
+      <optgroup label="Coming up">
+        {% for value, label in upcoming_months %}
+          <option value="{{ value }}"{% if value == month %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </optgroup>
+    </select>
+    {# The button works without JavaScript; the script below just saves a tap. #}
+    <input type="submit" value="Show">
+  </form>
+
+  {# AD-4: response tracker. Active members only; everyone listed here is counted. #}
+  <div class="module availability-module" id="tracker">
+    <h2>Responses</h2>
+    {% if responses.active %}
+      <p class="availability-count">
+        <strong>{{ responses.responded_count }} of {{ responses.total }} responded</strong>
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Status</th>
+            <th scope="col">Last submitted</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for response in responses.active %}
+            <tr>
+              <th scope="row">{{ response.name }}</th>
+              <td>
+                {% if response.responded %}
+                  <span class="status status-yes">Responded</span>
+                {% else %}
+                  <span class="status status-no">Not responded</span>
+                {% endif %}
+              </td>
+              {# The date filter shows times in Eastern (settings.TIME_ZONE), e.g. "Oct 2, 3:15 p.m." #}
+              <td>{% if response.responded %}{{ response.submission.submitted_at|date:"M j, g:i a" }}{% else %}&ndash;{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="availability-note">No one on the roster was on the team for this month.</p>
+    {% endif %}
+  </div>
+
+  {# AD-5: filled in by #21. #}
+  <div class="module availability-module" id="by-person">
+    <h2>By person</h2>
+    <p class="availability-note">Coming soon.</p>
+  </div>
+
+  {# AD-6: filled in by #22. #}
+  <div class="module availability-module" id="by-date">
+    <h2>By date</h2>
+    <p class="availability-note">Coming soon.</p>
+  </div>
+
+  {# Decision 2026-10-03: inactive members who responded, with full names. Not counted, never in copy text. #}
+  {% if responses.inactive %}
+    <div class="module availability-module" id="no-longer-active">
+      <h2>No longer active</h2>
+      <p class="availability-note">These people responded for this month but are no longer active. They aren't counted above or included in copy text.</p>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Status</th>
+            <th scope="col">Last submitted</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for response in responses.inactive %}
+            <tr>
+              <th scope="row">{{ response.name }}</th>
+              <td><span class="status status-yes">Responded</span></td>
+              <td>{{ response.submission.submitted_at|date:"M j, g:i a" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+</div>
+
+{# Show the new month as soon as it's picked, without needing the Show button. #}
+<script>
+  document.getElementById('month-select').addEventListener('change', function () {
+    document.getElementById('month-form').submit();
+  });
+</script>
+{% endblock %}
