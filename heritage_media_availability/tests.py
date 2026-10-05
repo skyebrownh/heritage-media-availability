@@ -28,7 +28,17 @@ from django.utils.html import escape
 from config.env import env_bool, env_list, env_required, parse_database_url
 
 from .dashboard import default_month, month_options, month_responses
-from .formatting import confirmation_message, day_ranges, days_list, display_names, previous_summary
+from .formatting import (
+    answer_label,
+    answer_text,
+    by_person_text,
+    confirmation_message,
+    day_ranges,
+    days_list,
+    display_names,
+    previous_summary,
+    ranges_text,
+)
 from .forms import CLOSED_MONTH_MESSAGE
 from .models import ClosedMonth, Member, Submission
 from .months import days_in_month, month_label, month_weeks, shift_month, upcoming_months, validate_month
@@ -1268,3 +1278,98 @@ class DashboardScenarioTests(TestCase):
     def test_no_upcoming_month_is_closed(self):
         # Closing and reopening upcoming months is left for manual steps to do.
         self.assertFalse(ClosedMonth.objects.filter(month__gte='2026-10').exists())
+
+
+class AnswerWordingTests(SimpleTestCase):
+    """AD-5 / AD-7: one person's answer, as copied and as shown on screen."""
+
+    def test_ranges_text(self):
+        self.assertEqual(ranges_text([20, 3, 4, 5, 6, 7]), '3-7, 20')
+        self.assertEqual(ranges_text([13]), '13')
+        # days_list (TF-9) still adds the month in front.
+        self.assertEqual(days_list('2026-10', [3, 4, 5, 6, 7, 20]), 'Oct 3-7, 20')
+
+    def test_each_kind(self):
+        cases = [
+            (Submission(kind='days', days=[1, 4, 10, 11]), '1, 4, 10-11', '1, 4, 10-11'),
+            (Submission(kind='available_all'), 'NA', 'Available all month'),
+            (Submission(kind='unavailable_all'), 'unavailable all month', 'Unavailable all month'),
+            (None, 'no response', 'No response'),
+        ]
+        for submission, copied, shown in cases:
+            with self.subTest(copied=copied):
+                self.assertEqual(answer_text(submission), copied)
+                self.assertEqual(answer_label(submission), shown)
+
+
+# SPEC.md's by-person copy example, character for character.
+SPEC_BY_PERSON_TEXT = """Bob: 3-7, 20
+Emily: 13
+Jane: 1, 4, 10-11, 27-31
+Jim: NA
+Sam: unavailable all month
+Tom: no response"""
+
+
+@override_settings(DEBUG=True)
+class ByPersonTests(TestCase):
+    """#21: the by-person view and its copy text (AD-5, AD-7)."""
+
+    def setUp(self):
+        # Today is Oct 5, 2026 for the whole test, so the next 31-day month is
+        # December, and December stays in the dashboard's month list whenever
+        # the tests run.
+        self.enterContext(at_utc(2026, 10, 5, 16, 0))
+        seed('spec-example')
+        self.month = '2026-12'
+        self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
+
+    def test_copy_text_matches_spec_example(self):
+        self.assertEqual(by_person_text(month_responses(self.month)), SPEC_BY_PERSON_TEXT)
+
+    def test_copy_text_leaves_out_notes_and_inactive_members(self):
+        text = by_person_text(month_responses(self.month))
+        self.assertNotIn('rehearsal', text)
+        self.assertNotIn('Pat', text)
+
+    def test_responders_first_then_non_responders_each_a_to_z(self):
+        # A non-responder named Abe sorts first A-Z but goes after every responder.
+        abe = Member.objects.create(first_name='Abe', last_name='Hart')
+        names = [r.name for r in month_responses(self.month).by_person]
+        self.assertEqual(names, ['Bob', 'Emily', 'Jane', 'Jim', 'Sam', 'Abe', 'Tom'])
+        # Once Abe responds, he moves up among the responders, A-Z.
+        Submission.objects.create(member=abe, month=self.month, kind='available_all')
+        names = [r.name for r in month_responses(self.month).by_person]
+        self.assertEqual(names, ['Abe', 'Bob', 'Emily', 'Jane', 'Jim', 'Sam', 'Tom'])
+
+    def test_newest_submission_is_the_one_copied(self):
+        tom = Member.objects.get(first_name='Tom')
+        Submission.objects.create(
+            member=tom, month=self.month, kind='days', days=[9], submitted_at=datetime(2026, 10, 1, tzinfo=UTC)
+        )
+        Submission.objects.create(
+            member=tom, month=self.month, kind='available_all', submitted_at=datetime(2026, 10, 3, tzinfo=UTC)
+        )
+        self.assertIn('Tom: NA', by_person_text(month_responses(self.month)))
+
+    def test_page_shows_answers_notes_and_copy_text(self):
+        response = self.client.get(reverse('availability'), {'month': self.month})
+        self.assertContains(response, 'No response')
+        self.assertContains(response, 'Available all month')
+        self.assertContains(response, escape("Can't make rehearsal on the 19th."))
+        # The copy text block holds exactly the copy text, with nothing around it.
+        self.assertContains(response, f'id="by-person-text" aria-labelledby="by-person-text-label">{SPEC_BY_PERSON_TEXT}</pre>')
+
+    def test_notes_are_escaped(self):
+        bob = Member.objects.get(first_name='Bob')
+        Submission.objects.create(member=bob, month=self.month, kind='available_all', notes='<b>busy</b>')
+        response = self.client.get(reverse('availability'), {'month': self.month})
+        self.assertContains(response, '&lt;b&gt;busy&lt;/b&gt;')
+        self.assertNotContains(response, '<b>busy</b>')
+
+    def test_no_longer_active_shows_answers(self):
+        response = self.client.get(reverse('availability'), {'month': self.month})
+        section = response.content.decode().split('id="no-longer-active"')[1]
+        self.assertIn('Pat Rivera', section)
+        self.assertIn('<th scope="col">Answer</th>', section)
+        self.assertRegex(section, r'Pat Rivera</th>\s*<td>\s*2\s')

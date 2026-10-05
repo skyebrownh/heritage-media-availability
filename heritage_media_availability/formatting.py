@@ -6,7 +6,8 @@ The TF-10 confirmation and TF-9 summary use it now; Week 3's copy formats
 (AD-7, "Bob: 3-7, 20") will reuse it, so all agree on how ranges are grouped.
 
 display_names() gives the short names ("Bob", "Bob J.") that Skye's
-dashboard and copy text use.
+dashboard and copy text use, and by_person_text() builds the by-person
+copy text (AD-7).
 """
 
 import calendar
@@ -38,6 +39,11 @@ def day_ranges(days):
 def format_range(first, last):
     """One run as text: "20" for a single day, "3-7" for several (a plain hyphen, as in the copy formats)."""
     return str(first) if first == last else f'{first}-{last}'
+
+
+def ranges_text(days):
+    """The days as compact ranges with no month: [3, 4, 5, 6, 7, 20] → "3-7, 20"."""
+    return ', '.join(format_range(first, last) for first, last in day_ranges(days))
 
 
 def days_phrase(month, days):
@@ -82,9 +88,8 @@ def days_list(month, days):
 
     Shorter than the TF-10 sentence (no "and"), since it's a reference line.
     """
-    pieces = [format_range(first, last) for first, last in day_ranges(days)]
     _, number = split_month(month)
-    return f'{calendar.month_abbr[number]} {", ".join(pieces)}'
+    return f'{calendar.month_abbr[number]} {ranges_text(days)}'
 
 
 def display_names(members):
@@ -143,3 +148,51 @@ def previous_summary(submission):
     else:
         what = days_list(submission.month, submission.days)
     return f'Your last submission ({when}): {what}. Submitting again replaces it.'
+
+
+def answer_text(submission):
+    """
+    AD-7: one person's answer as the by-person copy text writes it.
+
+    "3-7, 20" for days, "NA" for available all month, "unavailable all month",
+    or "no response" when `submission` is None. Wording is exactly SPEC.md's.
+    """
+    if submission is None:
+        return 'no response'
+    if submission.kind == Submission.Kind.AVAILABLE_ALL:
+        return 'NA'
+    if submission.kind == Submission.Kind.UNAVAILABLE_ALL:
+        return 'unavailable all month'
+    return ranges_text(submission.days)
+
+
+def answer_label(submission):
+    """
+    AD-5: one person's answer as the by-person view shows it on screen.
+
+    Same ranges as the copy text, but the all-month and missing answers are
+    spelled out ("Available all month" rather than "NA"), since the view is
+    read, not pasted.
+    """
+    if submission is None:
+        return 'No response'
+    if submission.kind == Submission.Kind.AVAILABLE_ALL:
+        return 'Available all month'
+    if submission.kind == Submission.Kind.UNAVAILABLE_ALL:
+        return 'Unavailable all month'
+    return ranges_text(submission.days)
+
+
+def by_person_text(responses):
+    """
+    AD-7: the by-person copy text for a month, e.g.
+
+        Bob: 3-7, 20
+        Jim: NA
+        Tom: no response
+
+    One line per active member, in MonthResponses.by_person order
+    (responders A–Z, then non-responders A–Z). Notes and inactive members
+    are never included (SPEC.md copy formats; decision 2026-10-03).
+    """
+    return '\n'.join(f'{response.name}: {answer_text(response.submission)}' for response in responses.by_person)

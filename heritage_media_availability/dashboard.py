@@ -18,7 +18,7 @@ from datetime import date
 
 from django.utils import timezone
 
-from .formatting import display_names
+from .formatting import answer_label, display_names
 from .models import ClosedMonth, Member, Submission
 from .months import days_in_month, month_label, split_month, upcoming_months
 
@@ -35,6 +35,11 @@ class Response:
     def responded(self):
         """AD-4 / business rules: any submission counts, even "available all month"."""
         return self.submission is not None
+
+    @property
+    def answer(self):
+        """AD-5: their answer as the by-person view shows it, e.g. "3-7, 20" or "No response"."""
+        return answer_label(self.submission)
 
 
 @dataclass
@@ -56,6 +61,17 @@ class MonthResponses:
     def total(self):
         """The "17" in "12 of 17 responded" (AD-4)."""
         return len(self.active)
+
+    @property
+    def by_person(self):
+        """
+        AD-5 / AD-7: the active rows in by-person order: responders, then non-responders.
+
+        Each group stays A–Z, because `active` already is and Python's sort
+        is stable (rows that tie keep their order). The view and the copy
+        text both use this, so they always list people in the same order.
+        """
+        return sorted(self.active, key=lambda response: not response.responded)
 
 
 def default_month():
