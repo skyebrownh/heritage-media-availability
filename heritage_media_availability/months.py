@@ -49,6 +49,20 @@ def days_in_month(month):
     return calendar.monthrange(year, number)[1]
 
 
+def shift_month(month, offset):
+    """
+    The month `offset` months after `month` (or before, if negative).
+
+    shift_month("2026-12", 1) → "2027-01"; shift_month("2026-01", -1) → "2025-12".
+    """
+    year, number = split_month(month)
+    # Count months from year 0 so adding an offset rolls over the year
+    # naturally: December (index 11) + 1 becomes January of the next year.
+    index = year * 12 + (number - 1) + offset
+    year, number = divmod(index, 12)
+    return f'{year}-{number + 1:02d}'
+
+
 def upcoming_months():
     """
     TF-3: the months the team form offers, oldest first.
@@ -60,15 +74,8 @@ def upcoming_months():
     11 pm Eastern on Nov 30 it's still November, even though it's already
     December 1 in UTC, which is how the server stores times.
     """
-    today = timezone.localdate()
-    months = []
-    for offset in range(MONTHS_AHEAD + 1):
-        # Count months from year 0 so adding an offset rolls over the year
-        # naturally: December (index 11) + 1 becomes January of the next year.
-        index = today.year * 12 + (today.month - 1) + offset
-        year, number = divmod(index, 12)
-        months.append(f'{year}-{number + 1:02d}')
-    return months
+    current = timezone.localdate().strftime('%Y-%m')
+    return [shift_month(current, offset) for offset in range(MONTHS_AHEAD + 1)]
 
 
 def month_weeks(month):
