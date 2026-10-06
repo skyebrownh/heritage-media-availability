@@ -28,6 +28,9 @@
   .answer-notes { display: block; margin-top: 4px; color: var(--body-quiet-color); font-style: italic; }
   /* AD-7: the copy text, shown exactly as it will be copied. pre-wrap keeps the
      line breaks but lets a long line wrap instead of scrolling sideways. */
+  /* AD-7: Copy buttons at least 44px tall to tap, with room above the text they copy. */
+  .copy-button { min-height: 44px; font-size: 1rem; padding: 0 20px; margin-bottom: 8px; }
+  .copy-fallback { color: var(--error-fg); margin: 0 0 8px; }
   .copy-text { white-space: pre-wrap; background: var(--darkened-bg); padding: 12px; margin: 0 0 12px; font-size: 1rem; }
 </style>
 {% endblock %}
@@ -127,6 +130,12 @@
       </table>
       {# AD-7: exactly the text the copy button (#23) will copy. Kept on one line in the template so no stray spaces or blank lines end up in it. #}
       <h3 id="by-person-text-label">Copy text</h3>
+      {# AD-7: copies the block below. The hidden words give each button its own name for screen readers. #}
+      <button type="button" class="button copy-button" data-copy-target="by-person-text" data-copied-message="By-person text copied.">
+        <span class="copy-label">Copy</span><span class="visually-hidden"> by-person text</span>
+      </button>
+      {# Shown only if the browser refuses to copy; the script then selects the text instead. #}
+      <p class="copy-fallback" id="by-person-text-fallback" hidden>Couldn't copy automatically. The text is selected, so use your device's Copy command.</p>
       <pre class="copy-text" id="by-person-text" aria-labelledby="by-person-text-label">{{ by_person_text }}</pre>
     {% else %}
       <p class="availability-note">No one on the roster was on the team for this month.</p>
@@ -169,6 +178,12 @@
         {% endif %}
         {# AD-7: exactly the text the copy button (#23) will copy. One template line, so no stray spaces or blank lines get in. #}
         <h3 id="by-date-text-label">Copy text</h3>
+        {# AD-7: copies the block below. The hidden words give each button its own name for screen readers. #}
+        <button type="button" class="button copy-button" data-copy-target="by-date-text" data-copied-message="By-date text copied.">
+          <span class="copy-label">Copy</span><span class="visually-hidden"> by-date text</span>
+        </button>
+        {# Shown only if the browser refuses to copy; the script then selects the text instead. #}
+        <p class="copy-fallback" id="by-date-text-fallback" hidden>Couldn't copy automatically. The text is selected, so use your device's Copy command.</p>
         <pre class="copy-text" id="by-date-text" aria-labelledby="by-date-text-label">{{ by_date_text }}</pre>
       {% endif %}
     {% endwith %}
@@ -206,10 +221,69 @@
 
 </div>
 
+{# AD-7: screen readers announce whatever the copy script writes here ("By-person text copied."). #}
+<div id="copy-status" class="visually-hidden" role="status" aria-live="polite"></div>
+
 {# Show the new month as soon as it's picked, without needing the Show button. #}
 <script>
   document.getElementById('month-select').addEventListener('change', function () {
     document.getElementById('month-form').submit();
   });
+
+  // AD-7: Copy buttons. Each button names its text block in data-copy-target.
+  // Wrapped in a function so these names don't leak into the page's global scope.
+  (function () {
+    var liveRegion = document.getElementById('copy-status');
+
+    // Tell screen readers what happened. Clearing first makes them announce
+    // the message again even if it's the same as last time.
+    function announce(message) {
+      liveRegion.textContent = '';
+      setTimeout(function () { liveRegion.textContent = message; }, 50);
+    }
+
+    // Copy plain text (so Google Docs gets no fonts or colors). Browsers only
+    // offer the Clipboard API on https:// or localhost, and can still refuse;
+    // either way the returned promise fails and the fallback below runs.
+    function copyText(text) {
+      if (!navigator.clipboard || !navigator.clipboard.writeText) {
+        return Promise.reject(new Error('Clipboard API not available'));
+      }
+      return navigator.clipboard.writeText(text);
+    }
+
+    // Fallback: highlight the whole block so Skye can copy it herself.
+    function selectText(element) {
+      var range = document.createRange();
+      range.selectNodeContents(element);
+      var selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
+    document.querySelectorAll('[data-copy-target]').forEach(function (button) {
+      var block = document.getElementById(button.dataset.copyTarget);
+      var label = button.querySelector('.copy-label');
+      var fallback = document.getElementById(button.dataset.copyTarget + '-fallback');
+      var resetTimer;
+
+      button.addEventListener('click', function () {
+        fallback.hidden = true;
+        // textContent is the text exactly as shown: HTML codes like &amp;
+        // become real characters again, and line breaks are kept.
+        copyText(block.textContent).then(function () {
+          label.textContent = 'Copied!';
+          announce(button.dataset.copiedMessage);
+          // Back to "Copy" after 2 seconds; a second tap restarts the timer.
+          clearTimeout(resetTimer);
+          resetTimer = setTimeout(function () { label.textContent = 'Copy'; }, 2000);
+        }).catch(function () {
+          selectText(block);
+          fallback.hidden = false;
+          announce(fallback.textContent);
+        });
+      });
+    });
+  })();
 </script>
 {% endblock %}

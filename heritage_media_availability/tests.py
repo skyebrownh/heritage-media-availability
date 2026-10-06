@@ -1472,3 +1472,45 @@ class ByDateEmptyTests(TestCase):
         self.assertIn('Nobody is unavailable this month (1 of 2 responded).', section)
         self.assertNotIn('by-date-text', section)
         self.assertEqual(by_date_text(month_responses('2026-10')), '')
+
+
+@override_settings(DEBUG=True)
+class CopyButtonTests(TestCase):
+    """
+    #23: the Copy buttons the server sends (AD-7).
+
+    Django's tests can't click or read the clipboard; the copying itself is
+    checked by hand (see the PR's test steps).
+    """
+
+    def setUp(self):
+        self.enterContext(at_utc(2026, 10, 5, 16, 0))
+        seed('spec-example')
+        self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
+
+    def page(self, month):
+        """The dashboard's HTML for a month."""
+        return self.client.get(reverse('availability'), {'month': month}).content.decode()
+
+    def test_one_button_per_copy_block(self):
+        html = self.page('2026-12')
+        for target in ['by-person-text', 'by-date-text']:
+            with self.subTest(target=target):
+                self.assertEqual(html.count(f'data-copy-target="{target}"'), 1)
+                self.assertIn(f'<pre class="copy-text" id="{target}"', html)
+                self.assertIn(f'id="{target}-fallback" hidden>', html)
+
+    def test_buttons_have_distinct_screen_reader_names(self):
+        html = self.page('2026-12')
+        self.assertIn('<span class="copy-label">Copy</span><span class="visually-hidden"> by-person text</span>', html)
+        self.assertIn('<span class="copy-label">Copy</span><span class="visually-hidden"> by-date text</span>', html)
+
+    def test_live_region_for_announcements(self):
+        self.assertIn('id="copy-status" class="visually-hidden" role="status" aria-live="polite"', self.page('2026-12'))
+
+    def test_no_by_date_button_without_copy_text(self):
+        # Nobody in this scenario answered for November: "No responses yet." and nothing to copy.
+        html = self.page('2026-11')
+        self.assertNotIn('data-copy-target="by-date-text"', html)
+        # By person still lists everyone ("no response"), so it keeps its button.
+        self.assertIn('data-copy-target="by-person-text"', html)
