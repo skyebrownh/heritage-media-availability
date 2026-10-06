@@ -31,6 +31,7 @@ from .dashboard import default_month, month_options, month_responses
 from .formatting import (
     answer_label,
     answer_text,
+    by_date_text,
     by_person_text,
     confirmation_message,
     day_ranges,
@@ -1373,3 +1374,101 @@ class ByPersonTests(TestCase):
         self.assertIn('Pat Rivera', section)
         self.assertIn('<th scope="col">Answer</th>', section)
         self.assertRegex(section, r'Pat Rivera</th>\s*<td>\s*2\s')
+
+
+# The start of SPEC.md's by-date copy example, character for character.
+SPEC_BY_DATE_START = """Unavailable all month: Sam
+1: Jane
+3: Bob
+4: Bob, Jane
+5: Bob"""
+
+# The whole by-date text for the spec-example scenario (SPEC.md only shows the start).
+SPEC_BY_DATE_FULL = SPEC_BY_DATE_START + """
+6: Bob
+7: Bob
+10: Jane
+11: Jane
+13: Emily
+20: Bob
+27: Jane
+28: Jane
+29: Jane
+30: Jane
+31: Jane"""
+
+
+@override_settings(DEBUG=True)
+class ByDateTests(TestCase):
+    """#22: the by-date view and its copy text (AD-6, AD-7)."""
+
+    def setUp(self):
+        # Today is Oct 5, 2026, so spec-example uses December 2026 (see ByPersonTests).
+        self.enterContext(at_utc(2026, 10, 5, 16, 0))
+        seed('spec-example')
+        self.month = '2026-12'
+        self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
+
+    def text(self):
+        """The by-date copy text for the scenario's month, as it stands now."""
+        return by_date_text(month_responses(self.month))
+
+    def test_copy_text_starts_like_spec_example(self):
+        self.assertTrue(self.text().startswith(SPEC_BY_DATE_START + '\n'))
+
+    def test_full_copy_text(self):
+        # Day 2 is missing: only Pat picked it, and Pat is inactive. Tom didn't respond.
+        self.assertEqual(self.text(), SPEC_BY_DATE_FULL)
+
+    def test_all_month_people_are_not_repeated_on_days(self):
+        self.assertNotRegex(self.text(), r'\d+: .*Sam')
+
+    def test_all_month_line_left_out_when_nobody_is(self):
+        sam = Member.objects.get(first_name='Sam')
+        Submission.objects.create(member=sam, month=self.month, kind='days', days=[2])
+        text = self.text()
+        self.assertNotIn('Unavailable all month', text)
+        # Sam's newest answer counts: he's now out on the 2nd, the first line.
+        self.assertTrue(text.startswith('1: Jane\n2: Sam\n3: Bob'))
+
+    def test_page_shows_weekdays_and_copy_text(self):
+        response = self.client.get(reverse('availability'), {'month': self.month})
+        # December 4, 2026 is a Friday.
+        self.assertContains(response, '<th scope="row">Fri 4</th>', html=False)
+        self.assertContains(response, '<td>Bob, Jane</td>', html=False)
+        self.assertContains(response, 'Unavailable all month:</strong> Sam')
+        self.assertContains(
+            response, f'id="by-date-text" aria-labelledby="by-date-text-label">{escape(SPEC_BY_DATE_FULL)}</pre>'
+        )
+
+
+class ByDateEmptyTests(TestCase):
+    """#22: what the by-date view says when nobody is out (AD-6)."""
+
+    def setUp(self):
+        self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
+        self.bob = Member.objects.create(first_name='Bob', last_name='Smith')
+        self.amy = Member.objects.create(first_name='Amy', last_name='Lee')
+
+    def by_date_section(self):
+        """The By date section's HTML for October 2026 (always in the month list on Oct 5, 2026)."""
+        with at_utc(2026, 10, 5, 16, 0):
+            response = self.client.get(reverse('availability'), {'month': '2026-10'})
+        return response.content.decode().split('id="by-date"')[1]
+
+    def test_no_responses_yet(self):
+        section = self.by_date_section()
+        self.assertIn('No responses yet.', section)
+        self.assertNotIn('by-date-text', section)
+
+    def test_only_inactive_responses_count_as_none(self):
+        pat = Member.objects.create(first_name='Pat', last_name='Rivera', is_active=False)
+        Submission.objects.create(member=pat, month='2026-10', kind='days', days=[2])
+        self.assertIn('No responses yet.', self.by_date_section())
+
+    def test_everyone_so_far_available_all_month(self):
+        Submission.objects.create(member=self.bob, month='2026-10', kind='available_all')
+        section = self.by_date_section()
+        self.assertIn('Nobody is unavailable this month (1 of 2 responded).', section)
+        self.assertNotIn('by-date-text', section)
+        self.assertEqual(by_date_text(month_responses('2026-10')), '')

@@ -133,10 +133,45 @@
     {% endif %}
   </div>
 
-  {# AD-6: filled in by #22. #}
+  {# AD-6: each day anyone is out, and who. Active members only; people unavailable all month are listed once at the top. #}
   <div class="module availability-module" id="by-date">
     <h2>By date</h2>
-    <p class="availability-note">Coming soon.</p>
+    {% with by_date=responses.by_date %}
+      {% if not responses.active %}
+        <p class="availability-note">No one on the roster was on the team for this month.</p>
+      {% elif not responses.responded_count %}
+        <p class="availability-note">No responses yet.</p>
+      {% elif not by_date.anyone_out %}
+        {# Everyone who answered is available all month. The count says how many have answered so far. #}
+        <p class="availability-note">Nobody is unavailable this month ({{ responses.responded_count }} of {{ responses.total }} responded).</p>
+      {% else %}
+        {% if by_date.all_month %}
+          <p class="availability-count"><strong>Unavailable all month:</strong> {{ by_date.all_month|join:", " }}</p>
+        {% endif %}
+        {% if by_date.days %}
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Day</th>
+                <th scope="col">Who's out</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for day, names in by_date.days %}
+                <tr>
+                  {# The weekday is for context on screen only ("Fri 4"); the copy text uses just the number. #}
+                  <th scope="row">{{ day|date:"D j" }}</th>
+                  <td>{{ names|join:", " }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% endif %}
+        {# AD-7: exactly the text the copy button (#23) will copy. One template line, so no stray spaces or blank lines get in. #}
+        <h3 id="by-date-text-label">Copy text</h3>
+        <pre class="copy-text" id="by-date-text" aria-labelledby="by-date-text-label">{{ by_date_text }}</pre>
+      {% endif %}
+    {% endwith %}
   </div>
 
   {# Decision 2026-10-03: inactive members who responded, with full names. Not counted, never in copy text. #}

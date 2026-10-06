@@ -15,7 +15,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods
 
 from .dashboard import default_month, month_options, month_responses
-from .formatting import by_person_text, confirmation_message, previous_summary
+from .formatting import by_date_text, by_person_text, confirmation_message, previous_summary
 from .forms import CLOSED_MONTH_MESSAGE, TeamForm
 from .models import Submission
 from .months import month_label, validate_month
@@ -165,5 +165,7 @@ def availability_dashboard(request):
             'responses': responses,
             # AD-7: the exact text the by-person copy button (#23) will copy.
             'by_person_text': by_person_text(responses),
+            # AD-7: the same for the by-date copy button. Empty when nobody is out.
+            'by_date_text': by_date_text(responses),
         },
     )
