@@ -68,7 +68,7 @@ IDs let you reference each requirement when prompting an AI coding tool or testi
 | TF-8 | Submit requires a name, a month, and either at least one day or an all-month option. Missing pieces get a plain-language message. |
 | TF-9 | If the person already submitted for that month, the form pre-fills with it: the calendar days (or all-month choice) and notes start from the earlier submission, so they only change what's different. A read-only summary of that earlier submission stays visible above the calendar as a reference while they edit, e.g. "Your last submission (10/02/26): Oct 3-7, 20. Submitting again replaces it." For all-month choices it reads "available all month" or "unavailable all month". |
 | TF-10 | After submitting, a confirmation restates what was saved, greeting by first name, with a button to fill out another month. Days name the month once, then list ranges: "Thanks, Bob! You're unavailable Oct 3-7, and 20." (one range: "Oct 3-7"; three or more: "Oct 3-7, 10, and 20"). All-month choices read "Thanks, Bob! You're available all of November." and "Thanks, Bob! You're unavailable all of November." |
-| TF-11 | Nice-to-have: the device remembers the last name selected so returning users skip the dropdown. |
+| TF-11 | The browser remembers the name from its last successful submit, for a year, so returning users find their name already selected. Only active members are preselected; otherwise the dropdown starts empty. Picking a different name and submitting remembers that one instead. Nothing is remembered if the browser blocks cookies. |
 
 ### Admin
 

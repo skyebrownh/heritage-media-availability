@@ -7,6 +7,7 @@ Skye's availability dashboard lives inside the admin at /admin/availability/
 (see config/urls.py for how it's protected by the admin login).
 """
 
+from django.conf import settings
 from django.contrib import admin
 from django.core.exceptions import ValidationError
 from django.http import JsonResponse
@@ -17,7 +18,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 from .dashboard import default_month, month_options, month_responses
 from .formatting import by_date_text, by_person_text, confirmation_message, previous_summary
 from .forms import CLOSED_MONTH_MESSAGE, TeamForm
-from .models import Submission
+from .models import Member, Submission
 from .months import month_label, validate_month
 
 # Session key holding the id of this visitor's latest submission, so the
@@ -25,13 +26,39 @@ from .months import month_label, validate_month
 # (where anyone could change the number to see someone else's answers).
 LAST_SUBMISSION_KEY = 'last_submission_id'
 
+# TF-11: cookie holding the member id from this browser's last successful
+# submit, so their name starts selected next time. Kept for a year, since
+# people come back about monthly and a 30-day session would often expire first.
+REMEMBERED_MEMBER_COOKIE = 'remembered_member'
+REMEMBERED_MEMBER_MAX_AGE = 60 * 60 * 24 * 365
+
+
+def remembered_member_id(request):
+    """
+    TF-11: the member to preselect from this browser's cookie, or None.
+
+    Only an active member counts: someone marked inactive has left the
+    dropdown, so their name can't be selected. A missing cookie, or one
+    that's been cleared, blocked, or edited into nonsense, just means no
+    preselected name. The id isn't secret (anyone can pick any name, per
+    SPEC.md's trusted-identity rule), so the cookie isn't signed.
+    """
+    value = request.COOKIES.get(REMEMBERED_MEMBER_COOKIE, '')
+    if not value.isdigit():
+        return None
+    member_id = int(value)
+    if not Member.objects.filter(pk=member_id, is_active=True).exists():
+        return None
+    return member_id
+
 
 @require_http_methods(['GET', 'POST'])
 def team_form(request):
     """
     The team availability form at "/" (TF-1: public, no login).
 
-    GET shows an empty form. POST checks everything on the server (TF-8):
+    GET shows an empty form, with the name preselected if this browser
+    remembers one (TF-11). POST checks everything on the server (TF-8):
     if anything's wrong, the form comes back with plain-language messages
     and the person's choices kept; if it's all fine, a new Submission is
     saved and the browser is sent on to the confirmation page.
@@ -43,9 +70,22 @@ def team_form(request):
             request.session[LAST_SUBMISSION_KEY] = submission.pk
             # Post/Redirect/Get: redirecting after a successful POST means
             # refreshing the confirmation page can't submit a second time.
-            return redirect('heritage_media_availability:thanks')
+            response = redirect('heritage_media_availability:thanks')
+            # TF-11: remember this name on this browser, only after a successful submit.
+            response.set_cookie(
+                REMEMBERED_MEMBER_COOKIE,
+                str(submission.member_id),
+                max_age=REMEMBERED_MEMBER_MAX_AGE,
+                httponly=True,  # page scripts never need it; the server preselects the name
+                samesite='Lax',
+                secure=settings.SESSION_COOKIE_SECURE,  # HTTPS-only in production, like the other cookies
+            )
+            return response
     else:
-        form = TeamForm()
+        # TF-11: start with the remembered name selected, if there is one.
+        # `initial` only applies to a fresh form; after a failed submit the
+        # form shows what the person actually sent instead.
+        form = TeamForm(initial={'member': remembered_member_id(request)})
 
     return render(
         request,
