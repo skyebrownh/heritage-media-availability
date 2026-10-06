@@ -1514,3 +1514,74 @@ class CopyButtonTests(TestCase):
         self.assertNotIn('data-copy-target="by-date-text"', html)
         # By person still lists everyone ("no response"), so it keeps its button.
         self.assertIn('data-copy-target="by-person-text"', html)
+
+
+class RememberNameTests(TestCase):
+    """TF-11 (#10): the browser remembers the name from its last successful submit."""
+
+    url = reverse('heritage_media_availability:team_form')
+
+    def setUp(self):
+        self.bob = Member.objects.create(first_name='Bob', last_name='Smith')
+        self.amy = Member.objects.create(first_name='Amy', last_name='Lee')
+
+    def submit(self, member, **overrides):
+        """Submit the form as `member` for November 2026 (on Oct 1, 2026)."""
+        data = {'member': member.pk, 'month': '2026-11', 'kind': 'available_all', 'notes': ''}
+        data.update(overrides)
+        with at_utc(2026, 10, 1, 12, 0):
+            return self.client.post(self.url, data)
+
+    def selected_member(self):
+        """The member id preselected in the name dropdown on a fresh visit, or None."""
+        with at_utc(2026, 10, 1, 12, 0):
+            html = self.client.get(self.url).content.decode()
+        match = re.search(r'<option value="(\d+)" selected>', html)
+        return int(match.group(1)) if match else None
+
+    def test_successful_submit_remembers_the_name(self):
+        response = self.submit(self.bob)
+        cookie = response.cookies['remembered_member']
+        self.assertEqual(cookie.value, str(self.bob.pk))
+        # Kept for a year, hidden from page scripts, sent only on same-site visits.
+        self.assertEqual(cookie['max-age'], 60 * 60 * 24 * 365)
+        self.assertTrue(cookie['httponly'])
+        self.assertEqual(cookie['samesite'], 'Lax')
+        self.assertEqual(self.selected_member(), self.bob.pk)
+
+    def test_failed_submit_remembers_nothing(self):
+        response = self.submit(self.bob, kind='days')  # no days picked
+        self.assertNotIn('remembered_member', response.cookies)
+        self.assertIsNone(self.selected_member())
+
+    def test_new_name_is_remembered_after_its_submit(self):
+        self.submit(self.bob)
+        self.submit(self.amy)
+        self.assertEqual(self.selected_member(), self.amy.pk)
+
+    def test_inactive_member_is_not_preselected(self):
+        self.submit(self.bob)
+        self.bob.is_active = False
+        self.bob.save()
+        self.assertIsNone(self.selected_member())
+
+    def test_missing_or_bad_cookie_means_no_preselected_name(self):
+        self.assertIsNone(self.selected_member())
+        for value in ['', 'abc', '-1', '99999', '1; drop']:
+            with self.subTest(value=value):
+                self.client.cookies['remembered_member'] = value
+                self.assertIsNone(self.selected_member())
+
+    def test_failed_submit_shows_the_submitted_name_not_the_remembered_one(self):
+        self.submit(self.bob)
+        with at_utc(2026, 10, 1, 12, 0):
+            html = self.client.post(
+                self.url, {'member': self.amy.pk, 'month': '2026-11', 'kind': 'days', 'notes': ''}
+            ).content.decode()
+        self.assertIn(f'<option value="{self.amy.pk}" selected>', html)
+        self.assertNotIn(f'<option value="{self.bob.pk}" selected>', html)
+
+    @override_settings(SESSION_COOKIE_SECURE=True)
+    def test_cookie_is_https_only_in_production(self):
+        # Production turns SESSION_COOKIE_SECURE on (settings.py); this cookie follows it.
+        self.assertTrue(self.submit(self.bob).cookies['remembered_member']['secure'])
