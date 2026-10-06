@@ -79,7 +79,7 @@ IDs let you reference each requirement when prompting an AI coding tool or testi
 | AD-3 | A month selector covers past months (read-only reference) through 6 months ahead. Past months are offered if they have any submission or were ever closed. The dashboard opens on next month, the one usually being collected. |
 | AD-4 | The response tracker lists every active member as Responded or Not responded, with the last-submitted time and a count like "12 of 17 responded." Members added to the roster after a month ended aren't listed for it, unless they submitted for it. Inactive members who submitted for the month appear in a separate "No longer active" section at the bottom, by full name, with their answer and notes; they're left out of the count and all copy text. |
 | AD-5 | The by-person view lists each member's unavailable days in compact ranges, any all-month choice, and their notes (on a line under the answer). It uses the same order as the by-person copy text: responders A–Z, then non-responders A–Z. |
-| AD-6 | The by-date view lists each day of the month that has anyone unavailable, with who's out. Days with nobody out are skipped, matching the copy text below. People marked "unavailable all month" are not repeated on each day; they're listed once in a note at the top of the view. |
+| AD-6 | The by-date view lists each day of the month that has anyone unavailable, with who's out. Days with nobody out are skipped, matching the copy text below. People marked "unavailable all month" are not repeated on each day; they're listed once in a note at the top of the view. On screen, each day also shows its weekday for context ("Fri 4"); the copy text doesn't. When nobody is out, the view says "No responses yet." if no one has responded, or "Nobody is unavailable this month (3 of 7 responded)." if everyone who has responded is available all month, and there's no copy text. |
 | AD-7 | The by-person and by-date views each have a copy button that copies their text format below to the clipboard. |
 | AD-8 | Close month and Reopen month happen in Django admin, for any month including past ones. Closing asks for confirmation. Nothing closes automatically; Skye closes months by hand. |
 
@@ -100,7 +100,7 @@ Sam: unavailable all month
 Tom: no response
 ```
 
-**By date:** one line per day that has anyone out, in date order with display names A–Z by first name. Days with nobody out are skipped. People unavailable all month appear once on the first line instead of on every day. The start of the output for the same responses:
+**By date:** one line per day that has anyone out, in date order with display names A–Z by first name. Days with nobody out are skipped. People unavailable all month appear once on the first line instead of on every day; if nobody is, that line is left out entirely. The start of the output for the same responses:
 
 ```
 Unavailable all month: Sam

@@ -7,7 +7,7 @@ The TF-10 confirmation and TF-9 summary use it now; Week 3's copy formats
 
 display_names() gives the short names ("Bob", "Bob J.") that Skye's
 dashboard and copy text use, and by_person_text() builds the by-person
-copy text (AD-7).
+copy text (AD-7), and by_date_text() the by-date copy text.
 """
 
 import calendar
@@ -196,3 +196,24 @@ def by_person_text(responses):
     are never included (SPEC.md copy formats; decision 2026-10-03).
     """
     return '\n'.join(f'{response.name}: {answer_text(response.submission)}' for response in responses.by_person)
+
+
+def by_date_text(responses):
+    """
+    AD-7: the by-date copy text for a month, e.g.
+
+        Unavailable all month: Sam
+        1: Jane
+        4: Bob, Jane
+
+    The "Unavailable all month" line comes first, and is left out entirely
+    when nobody is. Then one line per day anyone is out, in date order.
+    Returns "" when nobody is out at all.
+    """
+    by_date = responses.by_date
+    lines = []
+    if by_date.all_month:
+        lines.append(f'Unavailable all month: {", ".join(by_date.all_month)}')
+    for day, names in by_date.days:
+        lines.append(f'{day.day}: {", ".join(names)}')
+    return '\n'.join(lines)

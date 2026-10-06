@@ -43,9 +43,31 @@ class Response:
 
 
 @dataclass
+class ByDate:
+    """
+    AD-6: who's out, grouped by day instead of by person.
+
+    all_month: display names of people unavailable all month, A–Z. They're
+    listed once here instead of on every day.
+    days: (date, names) for each day anyone picked, in date order, names A–Z.
+    Days nobody picked are left out.
+    """
+
+    all_month: list[str]
+    days: list[tuple[date, list[str]]]
+
+    @property
+    def anyone_out(self):
+        """False when nobody is unavailable at all, so there's no copy text to show."""
+        return bool(self.all_month or self.days)
+
+
+@dataclass
 class MonthResponses:
     """Everyone listed for one month, split into active and no-longer-active people."""
 
+    # The month these responses are for, e.g. "2026-11".
+    month: str
     # Active members listed for the month, A–Z by first then last name.
     active: list[Response]
     # Inactive members who responded to the month, A–Z, shown with full names.
@@ -72,6 +94,30 @@ class MonthResponses:
         text both use this, so they always list people in the same order.
         """
         return sorted(self.active, key=lambda response: not response.responded)
+
+    @property
+    def by_date(self):
+        """
+        AD-6 / AD-7: active members' current answers, regrouped by day.
+
+        Walking the rows in their A–Z order and adding each name to each of
+        that person's days leaves every day's list A–Z, with no extra sorting.
+        Inactive members and non-responders are never included.
+        """
+        Kind = Submission.Kind
+        all_month = []
+        names_by_day = {}
+        for response in self.active:
+            if response.submission is None:
+                continue
+            if response.submission.kind == Kind.UNAVAILABLE_ALL:
+                all_month.append(response.name)
+            for day in response.submission.days:  # empty unless kind is "days"
+                names_by_day.setdefault(day, []).append(response.name)
+
+        year, number = split_month(self.month)
+        days = [(date(year, number, day), names) for day, names in sorted(names_by_day.items())]
+        return ByDate(all_month=all_month, days=days)
 
 
 def default_month():
@@ -141,6 +187,7 @@ def month_responses(month):
     # Display names only need to tell apart the people listed for this month.
     names = display_names(member for member, _ in active)
     return MonthResponses(
+        month=month,
         active=[Response(member, names[member.pk], submission) for member, submission in active],
         inactive=[Response(member, str(member), submission) for member, submission in inactive],
     )
