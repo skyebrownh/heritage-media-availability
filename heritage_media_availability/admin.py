@@ -7,20 +7,24 @@ Django admin setup: the screens Skye uses behind the admin login (AD-1).
 
 Django builds the add/edit/list pages for us from the models; this file
 chooses which columns, filters and actions appear, and adds the one custom
-step (confirming before a month is closed).
+step (confirming before a month is closed). The screens are styled by
+django-unfold (#39): each admin class extends Unfold's ModelAdmin, and the
+site's name, colors and sidebar are in UNFOLD in config/settings.py.
 """
 
 from django import forms
 from django.contrib import admin, messages
 from django.contrib.admin.models import DELETION, LogEntry
 from django.template.response import TemplateResponse
+from unfold.admin import ModelAdmin
+from unfold.widgets import UnfoldAdminSelectWidget
 
 from .models import ClosedMonth, Member, Submission
-from .months import month_label
+from .months import month_label, shift_month, upcoming_months
 
 
 @admin.register(Member)
-class MemberAdmin(admin.ModelAdmin):
+class MemberAdmin(ModelAdmin):
     """Roster screen: add people, fix names, and switch them active or inactive."""
 
     list_display = ['first_name', 'last_name', 'is_active', 'created_at']
@@ -45,28 +49,60 @@ class MemberAdmin(admin.ModelAdmin):
         return False
 
 
-class MonthInput(forms.TextInput):
-    """
-    A browser month picker (<input type="month">).
+# AD-8 lets Skye close past months too; 6 months back covers any realistic
+# catch-up (decision 2026-10-09), mirroring the 6 months ahead the team can submit.
+MONTHS_BACK_TO_CLOSE = 6
 
-    It submits exactly "YYYY-MM", the format we store. Browsers without a
-    month picker show a plain text box instead, and the server still checks it.
-    """
 
-    input_type = 'month'
+def closable_month_choices():
+    """
+    The "close a month" dropdown's options: 6 months back through 6 ahead.
+
+    Grouped like the dashboard's month selector, oldest first, e.g. on
+    Oct 9, 2026: "Past months" Apr 2026 to Sep 2026, then "This month and
+    ahead" Oct 2026 to Apr 2027. Months that are already closed are still
+    listed, marked "(closed)", so choosing one gets the friendly "already
+    closed" message instead of a puzzling gap in the list.
+    """
+    closed = set(ClosedMonth.objects.values_list('month', flat=True))
+
+    def option(month):
+        label = month_label(month)
+        return (month, f'{label} (closed)' if month in closed else label)
+
+    coming_up = upcoming_months()
+    past = [shift_month(coming_up[0], -offset) for offset in range(MONTHS_BACK_TO_CLOSE, 0, -1)]
+    return [
+        ('', 'Choose a month'),
+        ('Past months', [option(month) for month in past]),
+        ('This month and ahead', [option(month) for month in coming_up]),
+    ]
 
 
 class ClosedMonthForm(forms.ModelForm):
-    """The "close a month" form: just the month, with a month picker."""
+    """
+    The "close a month" form: one dropdown of months.
+
+    A dropdown rather than a browser month picker (#39): it looks the same in
+    every browser (desktop Safari has no month picker at all), matches the
+    dashboard's month selector, and Unfold's select widget gives it the
+    admin's styling.
+    """
+
+    month = forms.ChoiceField(label='Month', widget=UnfoldAdminSelectWidget)
 
     class Meta:
         model = ClosedMonth
         fields = ['month']
-        widgets = {'month': MonthInput(attrs={'placeholder': '2026-11'})}
+
+    def __init__(self, *args, **kwargs):
+        """Build the month list when the form is made, so it follows today's date."""
+        super().__init__(*args, **kwargs)
+        self.fields['month'].choices = closable_month_choices()
 
 
 @admin.register(ClosedMonth)
-class ClosedMonthAdmin(admin.ModelAdmin):
+class ClosedMonthAdmin(ModelAdmin):
     """
     AD-8: close and reopen months, including past ones.
 
@@ -164,7 +200,7 @@ class ClosedMonthAdmin(admin.ModelAdmin):
 
 
 @admin.register(Submission)
-class SubmissionAdmin(admin.ModelAdmin):
+class SubmissionAdmin(ModelAdmin):
     """
     Read-only history of every submission, newest first.
 

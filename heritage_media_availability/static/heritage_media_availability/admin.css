@@ -1,0 +1,16 @@
+/*
+  Plain CSS for the admin (#39), for the few things django-unfold's own
+  stylesheet doesn't cover. Loaded on every admin page by UNFOLD["STYLES"]
+  in config/settings.py. Plain CSS on purpose: Unfold ships pre-built
+  Tailwind, so Tailwind classes that Unfold doesn't use itself would do nothing.
+*/
+
+/*
+  Light mode only (UNFOLD["THEME"] = "light"). Unfold hides its theme switch
+  but never tells the browser the page is light, so on a Mac in dark mode
+  the browser draws native pieces it controls, like a dropdown's open
+  list, in dark colors. This makes them match the light page.
+*/
+:root {
+  color-scheme: light;
+}

@@ -117,9 +117,11 @@ Formats and routines for each step of the loop above. Recent issues and PRs (e.g
 - Hosting: Railway (Hobby plan), deployed from GitHub
 - gunicorn serves the app in production; WhiteNoise serves static files (CSS, JS, admin styles)
 - Django's built-in test runner for tests
-- Approved packages: `django`, `psycopg[binary]`, `gunicorn`, `whitenoise`. Anything else needs approval first.
+- Approved packages: `django`, `psycopg[binary]`, `gunicorn`, `whitenoise`, `django-unfold`. Anything else needs approval first.
+- The admin is styled by django-unfold (#39). Its settings (site name, colors, light-only theme, sidebar links) are the `UNFOLD` block at the end of `config/settings.py`. Admin pages use Unfold's components and templates, not our Tailwind `app.css`; anything Unfold's stylesheet lacks is plain CSS loaded through `UNFOLD["STYLES"]`. Unfold is pre-1.0 and `uv.lock` pins it: upgrade deliberately with `uv lock --upgrade-package django-unfold`, then run the tests and click through the admin.
+- `INSTALLED_APPS` order matters for templates: our app, then `unfold`, then `django.contrib.admin` (reasons in `config/settings.py`).
 - `DATABASE_URL` is parsed with the standard library (`config/env.py`), not dj-database-url. Local `.env` is loaded with `uv run --env-file .env`, not python-dotenv.
-- Static files use WhiteNoise's `CompressedStaticFilesStorage` (no filename hashing), so tests don't need `collectstatic` first. Static files are the admin's plus our built `app.css`.
+- Static files use WhiteNoise's `CompressedStaticFilesStorage` (no filename hashing), so tests don't need `collectstatic` first. Static files are the admin's, Unfold's (CSS, fonts, scripts, all self-hosted), plus our built `app.css`.
 - `check --deploy` warnings mail.E001, security.W005 and security.W021 are silenced on purpose (reasons in `config/settings.py`). Revisit if we add a custom domain.
 
 ### Secrets and security
