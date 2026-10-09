@@ -1,0 +1,50 @@
+/*
+  Tailwind input for the team-facing pages (#33).
+
+  The standalone Tailwind CLI reads this file, finds every class our
+  templates use, and writes one minified stylesheet:
+  heritage_media_availability/static/heritage_media_availability/app.css.
+  That output is committed and served by WhiteNoise. Don't edit it by hand;
+  change this file or the templates, then rebuild (command in CLAUDE.md).
+
+  This file lives outside every static/ folder so `collectstatic` never
+  publishes it.
+*/
+
+/*
+  source(none) turns off Tailwind's default "scan the whole project", which
+  would also read Python files and docs and pick up any word that looks like
+  a class. Only the files below are scanned, so the CSS holds just the
+  classes the pages use:
+  - our templates (including the JavaScript inside them);
+  - forms.py, because Django adds the dropdown and notes box classes from
+    Python (SELECT_CLASSES and TEXTAREA_CLASSES), not from a template.
+  If you put Tailwind classes in another Python file, add it here.
+*/
+@import "tailwindcss" source(none);
+@source "../heritage_media_availability/templates";
+@source "../heritage_media_availability/forms.py";
+
+/*
+  Dark mode off for now (decision 2026-10-09). Tailwind Plus blocks carry
+  dark: classes; by default those follow the phone's dark setting. This makes
+  them apply only inside an element with class="dark", which we never add, so
+  blocks can be pasted unchanged and always render light. Turning dark mode on
+  later means removing this line and testing every page in dark.
+*/
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+  The pastel blue accent, moved unchanged from base.html's old inline theme
+  so pages look the same as before. It adds classes like bg-accent-100 and
+  ring-accent-200. The 700 shade is dark enough for text on white; the
+  lighter shades are only for backgrounds and focus rings. SPEC.md now calls
+  for Tailwind's indigo; the switch happens in the restyling issues (#34-#36).
+*/
+@theme {
+  --color-accent-50: #f0f7ff;
+  --color-accent-100: #e0efff;
+  --color-accent-200: #c4e0fb;
+  --color-accent-500: #5b9fe0;
+  --color-accent-700: #2563a8;
+}

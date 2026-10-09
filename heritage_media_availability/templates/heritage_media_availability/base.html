@@ -1,9 +1,9 @@
 {% comment %}
   Shared layout for every team-facing page (the form now; the confirmation
   page in #8). Pages fill in the "title" and "content" blocks.
-  Design rules (CLAUDE.md): mobile first at 375px, base text 16px or larger,
-  neutral palette with one soft pastel blue accent, clean cards.
+  Design rules (CLAUDE.md): mobile first at 375px, Tailwind Plus defaults.
 {% endcomment %}
+{% load static %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -11,23 +11,13 @@
   {# Makes phones render at real width instead of zoomed out (mobile first). #}
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Heritage Media Availability{% endblock %}</title>
-  {# Tailwind via CDN, per the stack in CLAUDE.md: utility classes, no build step. #}
-  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   {% comment %}
-    The pastel blue accent, defined once so every page shares it.
-    This adds classes like bg-accent-100 and ring-accent-200 to Tailwind.
-    The 700 shade is dark enough for text on white (high contrast); the
-    lighter shades are only for backgrounds and focus rings.
+    #33: pre-built Tailwind CSS, served by WhiteNoise. It's built from
+    tailwind/input.css (which also holds the accent colors) with the
+    standalone CLI, so phones download one small cached file instead of
+    building styles in the browser.
   {% endcomment %}
-  <style type="text/tailwindcss">
-    @theme {
-      --color-accent-50: #f0f7ff;
-      --color-accent-100: #e0efff;
-      --color-accent-200: #c4e0fb;
-      --color-accent-500: #5b9fe0;
-      --color-accent-700: #2563a8;
-    }
-  </style>
+  <link rel="stylesheet" href="{% static 'heritage_media_availability/app.css' %}">
 </head>
 <body class="min-h-screen bg-neutral-50 text-base text-neutral-900 antialiased">
   {# One centered column: full width on phones, capped on larger screens. #}

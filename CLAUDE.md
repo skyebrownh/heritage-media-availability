@@ -110,7 +110,8 @@ Formats and routines for each step of the loop above. Recent issues and PRs (e.g
 - Django project package: `config`. Django app: `heritage_media_availability` (underscores, because Python module names can't contain hyphens)
 - Python 3.12+ and current stable Django
 - Server-rendered Django templates; no React, Vue, or other SPA framework
-- Tailwind CSS: from the CDN for now. Before launch it moves to pre-built CSS made with Tailwind's standalone CLI (a single binary, no Node or npm) and served by WhiteNoise. That change was approved 2026-10-01 and is tracked in #14.
+- Tailwind CSS v4.3.3, pre-built with Tailwind's standalone CLI (a single binary, no Node or npm). The input is `tailwind/input.css`; the output, `heritage_media_availability/static/heritage_media_availability/app.css`, is committed and served by WhiteNoise. Never edit the output by hand. Rebuild it whenever template classes or the input change, and commit it with them. Dark mode is off (`dark:` classes never apply).
+- Tailwind Plus Application UI blocks (Skye's license; HTML version only, kept outside the repo) are the starting point for UI. Adapt them into templates. Blocks using `<el-*>` tags need the Tailwind Plus Elements JavaScript, which needs approval first.
 - Small vanilla JavaScript (or Alpine.js if I approve) for the calendar toggles and copy buttons
 - Postgres everywhere: my local Postgres for development, Railway Postgres in production, both via `DATABASE_URL`
 - Hosting: Railway (Hobby plan), deployed from GitHub
@@ -118,7 +119,7 @@ Formats and routines for each step of the loop above. Recent issues and PRs (e.g
 - Django's built-in test runner for tests
 - Approved packages: `django`, `psycopg[binary]`, `gunicorn`, `whitenoise`. Anything else needs approval first.
 - `DATABASE_URL` is parsed with the standard library (`config/env.py`), not dj-database-url. Local `.env` is loaded with `uv run --env-file .env`, not python-dotenv.
-- Static files use WhiteNoise's `CompressedStaticFilesStorage` (no filename hashing), so tests don't need `collectstatic` first. Only the admin has static files until #14 adds the pre-built Tailwind CSS.
+- Static files use WhiteNoise's `CompressedStaticFilesStorage` (no filename hashing), so tests don't need `collectstatic` first. Static files are the admin's plus our built `app.css`.
 - `check --deploy` warnings mail.E001, security.W005 and security.W021 are silenced on purpose (reasons in `config/settings.py`). Revisit if we add a custom domain.
 
 ### Secrets and security
@@ -142,8 +143,8 @@ Formats and routines for each step of the loop above. Recent issues and PRs (e.g
 ### Design rules
 
 - Mobile first: design at 375px wide, then scale up.
-- Base text at least 16px, tap targets at least 44px, high contrast.
-- Neutral palette with one soft pastel blue accent. Clean cards and generous white space, in the spirit of Airtable and Zapier forms.
+- Follow Tailwind Plus defaults, with no exceptions: `text-base sm:text-sm` (16px on phones, 14px from 640px up), its control and button sizes, its gray palette, and its default indigo accent. Contrast meets WCAG AA.
+- Clean cards and generous white space, as in the Tailwind Plus blocks.
 - Plain, friendly wording (e.g. "Which days can't you serve?"). Many users are older and not comfortable with tech.
 - Every input has a label, and calendar days work with a keyboard and screen reader.
 
@@ -157,6 +158,8 @@ All commands load local settings from `.env` (copy `.env.example` first).
 - Create admin user (local): `uv run --env-file .env python manage.py createsuperuser`
 - Create admin user (Railway): `railway ssh`, then `python manage.py createsuperuser` (or `changepassword <username>` to reset), then `exit`
 - Reset local data to a test scenario: `uv run --env-file .env python manage.py seed <scenario>` (`seed --list` shows them). Deletes all members, submissions and closed months first; keeps admin accounts. Refuses unless `DEBUG` is on and the database is local.
+- Get the Tailwind CLI (once per machine; `bin/` is git-ignored): `mkdir -p bin && curl -sSL -o bin/tailwindcss https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.3/tailwindcss-macos-arm64 && chmod +x bin/tailwindcss`
+- Build the CSS (after changing template classes or `tailwind/input.css`): `bin/tailwindcss -i tailwind/input.css -o heritage_media_availability/static/heritage_media_availability/app.css --minify` (add `--watch` to rebuild on save while developing)
 - Make migrations after changing models: `uv run --env-file .env python manage.py makemigrations`
 - Create an issue: `gh issue create --template <feature.md|bug.md>` (or `--title`/`--body-file` with `--milestone` and `--label`)
 - Open a PR: `gh pr create --fill` then edit, or `--title`/`--body-file`
