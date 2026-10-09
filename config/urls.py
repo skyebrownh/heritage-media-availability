@@ -9,10 +9,7 @@ from django.urls import include, path
 
 from heritage_media_availability import views
 
-# Friendlier wording than Django's default "Django administration".
-admin.site.site_header = 'Heritage Media Admin'
-admin.site.site_title = 'Heritage Media Admin'
-admin.site.index_title = 'Manage the roster'
+# The admin's name and look come from django-unfold's UNFOLD settings (#39).
 
 urlpatterns = [
     # Skye's availability dashboard (AD-3 to AD-7). admin_view() gives it the
@@ -20,7 +17,8 @@ urlpatterns = [
     # It must come before 'admin/', or Django's admin would claim this URL
     # and show "page not found".
     path('admin/availability/', admin.site.admin_view(views.availability_dashboard), name='availability'),
-    # Django's built-in admin: Skye's login (AD-1) and the roster (AD-2).
+    # Django's built-in admin, styled by django-unfold: Skye's login (AD-1),
+    # the roster (AD-2), and closed months (AD-8).
     path('admin/', admin.site.urls),
     # Everything else belongs to our app, starting at the site root.
     path('', include('heritage_media_availability.urls')),

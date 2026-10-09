@@ -630,7 +630,9 @@ class RosterAdminTests(TestCase):
     def test_roster_list_shows_members(self):
         response = self.client.get(reverse('admin:heritage_media_availability_member_changelist'))
         self.assertContains(response, 'Bob')
-        self.assertContains(response, 'Heritage Media Admin')
+        # #39: the site name comes from UNFOLD in settings; the tab title ends with it.
+        self.assertContains(response, 'Heritage Media')
+        self.assertContains(response, '| Heritage Media Availability</title>')
 
     def test_add_form_rejects_duplicate_with_friendly_message(self):
         response = self.client.post(
@@ -800,14 +802,25 @@ class ClosedMonthAdminTests(TestCase):
     """AD-8: closing (with confirmation) and reopening months in Django admin."""
 
     def setUp(self):
+        # The month dropdown follows today's date, so pin it (Oct 9, 2026, Eastern).
+        self.enterContext(at_utc(2026, 10, 9, 16, 0))
         admin_user = get_user_model().objects.create_superuser('skye', password='test-pass-123')
         self.client.force_login(admin_user)
         self.add_url = reverse('admin:heritage_media_availability_closedmonth_add')
         self.list_url = reverse('admin:heritage_media_availability_closedmonth_changelist')
 
-    def test_add_form_uses_month_picker(self):
+    def test_add_form_offers_a_month_dropdown(self):
+        # #39: an Unfold-styled dropdown from 6 months back through 6 ahead.
+        ClosedMonth.objects.create(month='2026-11')
         response = self.client.get(self.add_url)
-        self.assertContains(response, 'type="month"')
+        html = response.content.decode()
+        self.assertRegex(html, r'<select name="month"[^>]*class="[^"]*border-base-200')
+        options = re.findall(r'<option value="(\d{4}-\d{2})"[^>]*>([^<]*)</option>', html)
+        self.assertEqual(options[0], ('2026-04', 'April 2026'))
+        self.assertEqual(options[-1], ('2027-04', 'April 2027'))
+        self.assertEqual(len(options), 13)
+        # Already-closed months stay listed, marked like on the team form.
+        self.assertIn(('2026-11', 'November 2026 (closed)'), options)
         self.assertNotContains(response, '_addanother')
         self.assertNotContains(response, '_continue')
 
@@ -815,8 +828,8 @@ class ClosedMonthAdminTests(TestCase):
         response = self.client.post(self.add_url, {'month': '2026-11'})
         self.assertContains(response, 'Close November 2026?')
         self.assertContains(response, 'Yes, close it')
-        # Breadcrumbs in Django 6's list markup, so the admin CSS styles them.
-        self.assertContains(response, '<li aria-current="page">Close November 2026</li>', html=True)
+        # #39: Unfold has no breadcrumbs; Cancel is the way back to the list.
+        self.assertRegex(response.content.decode(), rf'<a href="{self.list_url}"[^>]*>\s*Cancel')
         self.assertFalse(ClosedMonth.objects.exists())
 
     def test_confirming_closes_the_month(self):
@@ -825,13 +838,22 @@ class ClosedMonthAdminTests(TestCase):
         self.assertTrue(ClosedMonth.objects.filter(month='2026-11').exists())
 
     def test_past_months_can_be_closed(self):
-        self.client.post(self.add_url, {'month': '2020-01', 'confirm': 'yes'})
-        self.assertTrue(ClosedMonth.objects.filter(month='2020-01').exists())
+        # AD-8: past months too, up to 6 months back.
+        self.client.post(self.add_url, {'month': '2026-04', 'confirm': 'yes'})
+        self.assertTrue(ClosedMonth.objects.filter(month='2026-04').exists())
+
+    def test_months_outside_the_dropdown_are_refused(self):
+        # The server checks the list too, not just the form on screen.
+        for month in ['2026-03', '2027-05']:
+            with self.subTest(month=month):
+                response = self.client.post(self.add_url, {'month': month, 'confirm': 'yes'})
+                self.assertContains(response, 'Select a valid choice')
+                self.assertFalse(ClosedMonth.objects.filter(month=month).exists())
 
     def test_invalid_month_returns_to_form_without_confirmation(self):
         response = self.client.post(self.add_url, {'month': '2026-13'})
         self.assertNotContains(response, 'Yes, close it')
-        self.assertContains(response, 'Enter a month like 2026-11')
+        self.assertContains(response, 'Select a valid choice')
 
     def test_already_closed_month_gets_friendly_error(self):
         ClosedMonth.objects.create(month='2026-11')
@@ -994,10 +1016,6 @@ class DashboardAccessTests(TestCase):
         response = self.client.get(reverse('availability'))
         self.assertContains(response, 'Availability for')
         self.assertContains(response, 'id="tracker"')
-        # Breadcrumbs use Django 6's list markup, which the admin CSS styles
-        # (an old-style <div class="breadcrumbs"> shows unstyled).
-        self.assertContains(response, '<ol class="breadcrumbs">')
-        # Placeholders for the next issues' views.
         self.assertContains(response, 'id="by-person"')
         self.assertContains(response, 'id="by-date"')
 
@@ -1008,14 +1026,18 @@ class DashboardAccessTests(TestCase):
         # The usual roster links are still there.
         self.assertContains(response, reverse('admin:heritage_media_availability_member_changelist'))
 
-    def test_side_menu_links_to_dashboard_on_other_admin_pages(self):
+    def test_sidebar_links_to_every_screen(self):
+        # #39: Unfold's sidebar (UNFOLD["SIDEBAR"] in settings) on every admin page.
         self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
         response = self.client.get(reverse('admin:heritage_media_availability_member_changelist'))
-        self.assertContains(response, 'id="nav-sidebar"')
-        self.assertContains(response, f'href="{reverse("availability")}"')
-        # On the dashboard itself, the side menu marks it as the current page.
-        response = self.client.get(reverse('availability'))
-        self.assertContains(response, 'aria-current="page">View the team\'s availability', html=False)
+        for name in [
+            'availability',
+            'admin:heritage_media_availability_member_changelist',
+            'admin:heritage_media_availability_closedmonth_changelist',
+            'admin:heritage_media_availability_submission_changelist',
+        ]:
+            with self.subTest(name=name):
+                self.assertContains(response, f'href="{reverse(name)}"')
 
 
 class DashboardMonthTests(TestCase):
@@ -1646,3 +1668,48 @@ class PrebuiltCssTests(TestCase):
         for name in sorted(classes):
             with self.subTest(name=name):
                 self.assertIn('.' + re.sub(r"([:/.\[\]'])", r'\\\1', name), css)
+
+
+class UnfoldAdminTests(TestCase):
+    """#39: the admin runs on django-unfold, in the app's colors, light mode only."""
+
+    def setUp(self):
+        self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
+
+    def test_admin_uses_unfolds_site(self):
+        # Unfold replaces admin.site when Django starts, so every registration
+        # and our admin_view() wrapper use it.
+        from django.contrib import admin
+        from unfold.sites import UnfoldAdminSite
+
+        self.assertIsInstance(admin.site, UnfoldAdminSite)
+
+    def test_app_has_a_readable_name(self):
+        # Without a verbose_name, page titles read "Heritage_Media_Availability administration".
+        response = self.client.get(reverse('admin:app_list', args=['heritage_media_availability']))
+        self.assertContains(response, 'Heritage Media administration')
+        self.assertNotContains(response, 'Heritage_Media_Availability')
+
+    def test_accent_is_tailwind_indigo(self):
+        # Unfold writes the COLORS setting into the page as CSS variables;
+        # indigo-600 is the shade used for buttons and links.
+        response = self.client.get(reverse('admin:heritage_media_availability_member_changelist'))
+        self.assertContains(response, settings.TAILWIND_INDIGO['600'])
+
+    def test_admin_stylesheet_is_loaded(self):
+        # UNFOLD["STYLES"]: our plain CSS (e.g. forcing light dropdown lists) on every admin page.
+        response = self.client.get(reverse('admin:heritage_media_availability_member_changelist'))
+        self.assertContains(response, '/static/heritage_media_availability/admin.css')
+        css = Path(finders.find('heritage_media_availability/admin.css')).read_text()
+        self.assertIn('color-scheme: light', css)
+
+    def test_light_mode_only(self):
+        # THEME = "light" removes the Light/Dark switcher everywhere: on an
+        # admin page (logged in) and on the login page (logged out).
+        admin_page = self.client.get(reverse('admin:heritage_media_availability_member_changelist'))
+        self.client.logout()
+        login_page = self.client.get(reverse('admin:login'))
+        for name, response in [('admin page', admin_page), ('login page', login_page)]:
+            with self.subTest(page=name):
+                self.assertEqual(response.status_code, 200)
+                self.assertNotContains(response, "switchTheme('dark')")

@@ -14,6 +14,9 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 
 from pathlib import Path
 
+from django.templatetags.static import static
+from django.urls import reverse_lazy
+
 from config.env import env_bool, env_list, env_required, parse_database_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -47,11 +50,15 @@ CSRF_FAILURE_VIEW = 'heritage_media_availability.views.csrf_failure'
 # Application definition
 
 INSTALLED_APPS = [
-    # Our app: the team form and Skye's admin views. Listed first so its
-    # templates win over Django's when they share a name: that's how
-    # templates/admin/index.html and nav_sidebar.html add the dashboard
-    # link to the admin home and side menu.
+    # Django looks for templates app by app, in this order, and uses the
+    # first match. So the order decides whose version of a page wins:
+    # 1. Our app: the team form and Skye's admin pages. First, so our own
+    #    admin templates (e.g. the close-month confirmation) win.
     'heritage_media_availability',
+    # 2. django-unfold (#39): the admin's look. Before django.contrib.admin,
+    #    so its templates replace the stock admin's. It also swaps in its own
+    #    admin site when Django starts; settings are in UNFOLD below.
+    'unfold',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -233,5 +240,74 @@ LOGGING = {
 MAILERS = {
     'default': {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
+    },
+}
+
+
+# Admin look: django-unfold (#39)
+# https://unfoldadmin.com/docs/configuration/settings/
+
+# Tailwind's indigo (v4), copied exactly from the Tailwind CLI's output, so
+# the admin's accent matches the team form's (design rules, 2026-10-09).
+# Unfold's default "base" grays are already Tailwind's gray, so only the
+# accent ("primary") needs setting.
+TAILWIND_INDIGO = {
+    '50': 'oklch(96.2% 0.018 272.314)',
+    '100': 'oklch(93% 0.034 272.788)',
+    '200': 'oklch(87% 0.065 274.039)',
+    '300': 'oklch(78.5% 0.115 274.713)',
+    '400': 'oklch(67.3% 0.182 276.935)',
+    '500': 'oklch(58.5% 0.233 277.117)',
+    '600': 'oklch(51.1% 0.262 276.966)',
+    '700': 'oklch(45.7% 0.24 277.023)',
+    '800': 'oklch(39.8% 0.195 277.366)',
+    '900': 'oklch(35.9% 0.144 278.697)',
+    '950': 'oklch(25.7% 0.09 281.288)',
+}
+
+UNFOLD = {
+    # Browser tab suffix, and the name shown at the top of the sidebar and
+    # on the login page.
+    'SITE_TITLE': 'Heritage Media Availability',
+    'SITE_HEADER': 'Heritage Media',
+    'SITE_SUBHEADER': 'Availability',
+    # An icon from the Material Symbols font that Unfold ships with.
+    'SITE_SYMBOL': 'calendar_month',
+    # Light only (no theme switcher), matching the team form (2026-10-09).
+    'THEME': 'light',
+    # Our small plain-CSS file for what Unfold's stylesheet lacks (see its
+    # comments). A function, because static() needs the app registry ready.
+    'STYLES': [lambda request: static('heritage_media_availability/admin.css')],
+    'COLORS': {'primary': TAILWIND_INDIGO},
+    'SIDEBAR': {
+        # Only four screens, so no search box and no list of every app.
+        'show_search': False,
+        'show_all_applications': False,
+        # reverse_lazy: settings load before the URLs exist, so each link is
+        # looked up only when a page is drawn.
+        'navigation': [
+            {
+                'title': 'Heritage Media',
+                'items': [
+                    # #40 moves the dashboard to the admin home page.
+                    {'title': 'Availability', 'icon': 'event_available', 'link': reverse_lazy('availability')},
+                    {
+                        'title': 'Roster',
+                        'icon': 'group',
+                        'link': reverse_lazy('admin:heritage_media_availability_member_changelist'),
+                    },
+                    {
+                        'title': 'Closed months',
+                        'icon': 'lock',
+                        'link': reverse_lazy('admin:heritage_media_availability_closedmonth_changelist'),
+                    },
+                    {
+                        'title': 'Submission history',
+                        'icon': 'history',
+                        'link': reverse_lazy('admin:heritage_media_availability_submission_changelist'),
+                    },
+                ],
+            },
+        ],
     },
 }
