@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest import mock
 
 from django.conf import settings
+from django.contrib.staticfiles import finders
 from django.contrib.admin.models import DELETION, LogEntry
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ImproperlyConfigured, ValidationError
@@ -1585,3 +1586,63 @@ class RememberNameTests(TestCase):
     def test_cookie_is_https_only_in_production(self):
         # Production turns SESSION_COOKIE_SECURE on (settings.py); this cookie follows it.
         self.assertTrue(self.submit(self.bob).cookies['remembered_member']['secure'])
+
+
+class PrebuiltCssTests(TestCase):
+    """#33: team pages use the committed, pre-built Tailwind CSS, not the CDN."""
+
+    css_path = 'heritage_media_availability/app.css'
+    url = reverse('heritage_media_availability:team_form')
+
+    def assert_uses_prebuilt_css(self, html):
+        """The page links the built stylesheet and has no in-browser Tailwind left."""
+        self.assertIn(f'<link rel="stylesheet" href="/static/{self.css_path}">', html)
+        self.assertNotIn('cdn.jsdelivr.net', html)
+        self.assertNotIn('text/tailwindcss', html)
+
+    def test_team_form_links_the_built_css(self):
+        self.assert_uses_prebuilt_css(self.client.get(self.url).content.decode())
+
+    def test_thanks_page_links_the_built_css(self):
+        bob = Member.objects.create(first_name='Bob', last_name='Smith')
+        with at_utc(2026, 10, 1, 12, 0):
+            response = self.client.post(
+                self.url,
+                {'member': bob.pk, 'month': '2026-11', 'kind': 'available_all', 'notes': ''},
+                follow=True,
+            )
+        self.assertContains(response, 'Thanks, Bob!')
+        self.assert_uses_prebuilt_css(response.content.decode())
+
+    def test_csrf_failure_page_links_the_built_css(self):
+        # A client that enforces CSRF, posting without a token, gets the friendly 403 page.
+        response = Client(enforce_csrf_checks=True).post(self.url, {})
+        self.assertEqual(response.status_code, 403)
+        self.assert_uses_prebuilt_css(response.content.decode())
+
+    def test_built_css_is_found_without_collectstatic(self):
+        # The file is committed inside the app's static/ folder, so Django's
+        # finders locate it straight from the source tree (no build, no collectstatic).
+        self.assertIsNotNone(finders.find(self.css_path))
+
+    def test_built_css_has_the_classes_pages_rely_on(self):
+        # A cheap "did you forget to rebuild?" check: a page-layout class, the
+        # accent theme from tailwind/input.css, and the calendar's selected-day style.
+        css = Path(finders.find(self.css_path)).read_text()
+        for selector in ('.max-w-md', '.text-accent-700', r'.peer-checked\:bg-accent-200'):
+            with self.subTest(selector=selector):
+                self.assertIn(selector, css)
+
+    def test_every_class_on_the_team_form_has_a_rule(self):
+        # Regression (#33): the dropdown and notes classes come from forms.py,
+        # not a template, and were left out of the build. Checking the rendered
+        # page catches a class from any source. Tailwind escapes : / . [ ] and '
+        # in its selectors, so the class names are escaped the same way.
+        Member.objects.create(first_name='Bob', last_name='Smith')
+        html = self.client.get(self.url).content.decode()
+        css = Path(finders.find(self.css_path)).read_text()
+        classes = {name for attr in re.findall(r'class="([^"]*)"', html) for name in attr.split()}
+        self.assertIn('focus:border-accent-500', classes)  # sanity check: forms.py's classes were rendered
+        for name in sorted(classes):
+            with self.subTest(name=name):
+                self.assertIn('.' + re.sub(r"([:/.\[\]'])", r'\\\1', name), css)

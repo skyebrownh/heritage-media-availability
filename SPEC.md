@@ -62,7 +62,7 @@ IDs let you reference each requirement when prompting an AI coding tool or testi
 | TF-2 | The user picks their name from a dropdown of active roster members, shown as "First Last" and sorted A–Z by first name (then last name). |
 | TF-3 | The user picks a month from the current month through 6 months ahead. No month is preselected, so the user always picks one deliberately. Closed months show a "(closed)" label. Past months are never offered, even if reopened. |
 | TF-4 | Picking a closed month hides the form and shows: "This month's schedule is finalized. Please text Skye with any changes." with a hint underneath: "You can choose a different month above." |
-| TF-5 | An open month shows a calendar of every day in that month. Tapping a day toggles it unavailable; tap targets are at least 44 px. |
+| TF-5 | An open month shows a calendar of every day in that month. Tapping a day toggles it unavailable. |
 | TF-6 | Above the calendar, a dropdown offers "Pick specific days" (default), "I'm available all month", and "I'm unavailable all month". Choosing either all-month option clears and disables the calendar; switching back to "Pick specific days" re-enables it. |
 | TF-7 | An optional notes field accepts up to 500 characters. |
 | TF-8 | Submit requires a name, a month, and either at least one day or an all-month option. Missing pieces get a plain-language message. |
@@ -182,10 +182,10 @@ The model leaves room for later ideas without rework. Phone login adds a phone c
 
 The bar is "easy on an older volunteer's phone," cheap to run, and safe enough for names and dates.
 
-- **Mobile first.** Design at 375 px wide first, and test on iPhone Safari and Android Chrome. Base text is at least 16 px, with high contrast and tap targets of at least 44 px.
+- **Mobile first.** Design at 375 px wide first, and test on iPhone Safari and Android Chrome. Text and control sizes follow Tailwind Plus defaults: 16 px text on phones (so iPhone Safari doesn't zoom into inputs), 14 px from 640 px wide up, and Tailwind Plus control sizes. Contrast meets WCAG AA.
 - **Plain language.** Labels read like a person talking ("Which days can't you serve?"), with no jargon and one decision per screen section.
 - **Accessible.** Every input has a label, and calendar days work with a keyboard and screen reader.
-- **Look and feel.** Clean cards, generous white space, and a soft pastel blue accent on an otherwise neutral palette, in the spirit of Airtable and Zapier forms.
+- **Look and feel.** Built from Tailwind Plus Application UI blocks: clean cards, generous white space, Tailwind's gray palette, and its default indigo accent.
 - **Fast.** Pages load in under 2 seconds on mobile data, and the form never "wakes up" slowly after sitting idle.
 - **Secure enough.** HTTPS everywhere, the admin password stored hashed by Django (never in code), and input validated on the server.
 - **Cost.** $10 a month or less, ideally near $0.
@@ -198,7 +198,7 @@ Recommendation: one Django app with server-rendered pages and Postgres, hosted o
 | Layer             | Choice                            | Why                                                                                                                             |
 | ----------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | Backend           | Django (Python)                   | The built-in admin handles the roster and closed months with almost no code, and built-in login protects the admin pages        |
-| Pages | Django templates + Tailwind (CDN now; pre-built CSS before launch) | Server-rendered HTML is fast on phones and simple to vibe-code; pre-built CSS avoids building styles on every phone |
+| Pages | Django templates + Tailwind (pre-built CSS) and Tailwind Plus blocks | Server-rendered HTML is fast on phones and simple to vibe-code; pre-built CSS avoids building styles on every phone |
 | Calendar and copy | Small vanilla JS, or Alpine.js    | Day toggles and the clipboard copy don't need a framework                                                                       |
 | Database          | Postgres on Railway               | Managed, backed up, one click to add                                                                                            |
 | Hosting           | Railway Hobby                     | $5/month including $5 of usage, which a 20-person form won't exceed ([Railway pricing](https://docs.railway.com/pricing/plans)) |
@@ -243,3 +243,4 @@ Spec decisions that aren't captured in a requirement above, with the date they w
 - 2026-09-28: TF-9 pre-fill loads the earlier submission with a small JavaScript fetch, so picking a name and month doesn't reload the page.
 - 2026-10-01: If someone is marked inactive while their form is open, their submission is still accepted. The name dropdown shows active members only, but the server accepts any member on the roster.
 - 2026-10-03: The app only stores whether someone is active *now*, so a past month can't know who was active then. Rather than add a table tracking when people became inactive (only works going forward), the dashboard lists today's active members minus anyone added after the month ended, plus a "No longer active" section for inactive members who responded to that month (AD-4). Accepted gap: an inactive member who didn't respond to a past month isn't shown as "Not responded".
+- 2026-10-09: Pages are built from Skye's licensed Tailwind Plus Application UI blocks (HTML version), and the design rules follow Tailwind Plus defaults with no exceptions: its text and control sizes, its gray palette, and its default indigo accent. This replaces the earlier "16 px minimum, 44 px tap targets, pastel blue accent" rules; WCAG AA (including its 24 px target size) is still met. Tailwind is pre-built into a committed CSS file, not built on Railway, and dark mode is off for now. The pages catch up to these rules in the restyling issues (#34-#36, #14); until then they keep the pastel accent.

@@ -13,3 +13,6 @@ staticfiles/
 .DS_Store
 .vscode/
 .idea/
+
+# Output of `bin/tailwindcss`: the standalone Tailwind CLI, downloaded per machine (#33)
+bin/
