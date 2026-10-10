@@ -20,7 +20,7 @@ Every piece of work follows this loop. `gh` (GitHub CLI) is installed and authen
 
 1. **Draft the issue.** You draft it in chat using the matching template in `.github/ISSUE_TEMPLATE/` (feature or bug). I approve or edit it. Then you create it with `gh issue create`, with a milestone and area label.
 2. **Plan.** Before writing code, show a short plan (files to create or change, and why) and wait for my approval. Once approved, post the plan as a comment on the issue (`gh issue comment`) so the reasoning stays with the work.
-3. **Build in small steps.** One issue = one requirement or a small group of related ones = one branch = one PR. Never build ahead of the current issue; anything else becomes a new issue.
+3. **Build in small steps.** One issue = one requirement or a small group of related ones. Usually one issue = one branch = one PR; issues that must ship together share a branch and PR (see Git workflow). Never build ahead of the current issue; anything else becomes a new issue.
 4. **Tell me how to test.** When the work is done, run the automated tests and give me exact manual test steps (what to click, what I should see), mapped to the issue's acceptance criteria.
 5. **Dependencies.** Ask before adding any package. Prefer the standard library and Django built-ins.
 6. **Keep docs current.** If a decision changes what the app does, update the requirement in SPEC.md in the same PR. Decisions that don't fit any requirement get a dated entry in SPEC.md's Decisions section. Discussion and context live in the issue. This file holds only conventions, standards, and architectural context; update it when those change or when we add a command.
@@ -52,10 +52,12 @@ Write good explanatory comments throughout. I'll be reading this code to learn f
 ### Git workflow
 
 - The local repo is the working copy. GitHub (`origin`) is the upstream. **Railway deploys automatically from `main`, so merging to `main` is deploying.**
-- Branch per issue from an up-to-date `main`, named `<issue#>-<short-slug>` (e.g. `12-closed-month-admin`). Never commit directly to `main`.
+- Never commit directly to `main`. Branches start from an up-to-date `main`. Every branch has one of two shapes:
+  - **Single-issue branch** (the default): one issue, one branch named `<issue#>-<short-slug>` (e.g. `12-closed-month-admin`), one PR, **squash merged**, so it becomes one commit on `main` titled after the issue.
+  - **Multi-issue branch**: for issues that must ship together (e.g. one would leave the live site half-finished without the next). The issues are built one after another on one branch named after the set (e.g. `unfold-admin`), with one PR that closes them all, **rebase merged**, so `main` keeps each commit. An issue can have more than one commit (e.g. a fix to the first issue found while testing the second). Each issue still gets its own plan, handover, and review; I'll name the set when we decide to batch.
 - Leave changes uncommitted until I've reviewed them in my editor. When the work is ready, suggest a commit message and wait for my OK before committing.
-- Open a PR with `gh pr create` using `.github/pull_request_template.md`. The description must include `Closes #<issue>` so merging closes the issue.
-- PRs are **squash merged**: each PR becomes one commit on `main`, titled after the issue.
+- Open a PR with `gh pr create` using `.github/pull_request_template.md`. The description must include `Closes #<issue>` for each issue, so merging closes them. For a multi-issue branch, open the PR once every issue in the set is committed.
+- Commits are never rewritten once committed. Something wrong after a merge becomes a new bug issue.
 
 **What you may do on your own:**
 - Create issues I've approved
@@ -82,22 +84,26 @@ Formats and routines for each step of the loop above. Recent issues and PRs (e.g
 
   Then wait. If testing turns something up, fix it on the same branch, and add a regression test when it's a bug.
 - **Test data.** `manage.py seed <scenario>` resets my local database to a known starting state (scenarios live in `heritage_media_availability/seeding.py`). Seed the setup, not the behavior under test: anything a manual step exists to check (submitting, resubmitting, closing or reopening a month, marking someone inactive), I do by hand during the steps, and the steps say so. When an issue needs a different starting state, it adds or updates a scenario in its own PR.
-- **Commit messages.** Use the issue's title, plus the co-author line.
+- **Commit messages.** The co-author line always ends the message.
+  - Single-issue branch: the issue's title.
+  - Multi-issue branch: the issue's title for its main commit; any further commit gets a short description of the change. Every commit's body says which issue it's for (`Part of #39.`), since rebase merging keeps these commits on `main`.
 - **PR descriptions.** Follow the template:
-  - `Closes #N`;
-  - "What changed" by file;
-  - the issue's acceptance criteria copied and ticked, with the test count on the tests line;
-  - numbered "How to test" steps;
+  - `Closes #N` (one line per issue on a multi-issue branch);
+  - "What changed" by file (grouped by issue on a multi-issue branch);
+  - each issue's acceptance criteria copied and ticked, with the test count on the tests line;
+  - numbered "How to test" steps; a multi-issue PR ends with steps that check the issues together;
   - the checklist, with a reason for any box that doesn't apply (e.g. "no model changes").
 
-  Use the issue's milestone and labels.
-- **Squash merging.** Title the squash commit `<issue title> (#<PR number>)`, e.g. `gh pr merge 19 --squash --subject "Pre-fill a person's earlier submission for the month (#19)"`.
+  Use the issues' milestone and labels. A multi-issue PR's title names the set (e.g. "Move the admin to Unfold").
+- **Merging.**
+  - Single-issue PR: squash, titled `<issue title> (#<PR number>)`, e.g. `gh pr merge 19 --squash --subject "Pre-fill a person's earlier submission for the month (#19)"`.
+  - Multi-issue PR: rebase, e.g. `gh pr merge 43 --rebase`. The branch's commits land on `main` as they are.
 - **After a merge:**
   1. `git checkout main && git pull --ff-only`
   2. Confirm `git diff main <branch>` is empty.
-  3. `git branch -D <branch>` (needed because squash merging changes the commit, so git doesn't see the branch as merged).
+  3. `git branch -D <branch>` (needed because squash and rebase merging both create new commits, so git doesn't see the branch as merged).
   4. `git fetch --prune`
-  5. Check the issue closed.
+  5. Check the issue (or every issue in the set) closed.
   6. Remind me what to check on Railway.
 
   GitHub deletes the remote branch automatically.
