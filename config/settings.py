@@ -278,6 +278,9 @@ UNFOLD = {
     # Our small plain-CSS file for what Unfold's stylesheet lacks (see its
     # comments). A function, because static() needs the app registry ready.
     'STYLES': [lambda request: static('heritage_media_availability/admin.css')],
+    # The admin home page is Skye's availability dashboard (#40): this
+    # function adds the month's data, and templates/admin/index.html shows it.
+    'DASHBOARD_CALLBACK': 'heritage_media_availability.admin_dashboard.dashboard_callback',
     'COLORS': {'primary': TAILWIND_INDIGO},
     'SIDEBAR': {
         # Only four screens, so no search box and no list of every app.
@@ -289,8 +292,8 @@ UNFOLD = {
             {
                 'title': 'Heritage Media',
                 'items': [
-                    # #40 moves the dashboard to the admin home page.
-                    {'title': 'Availability', 'icon': 'event_available', 'link': reverse_lazy('availability')},
+                    # The dashboard is the admin home page (#40).
+                    {'title': 'Availability', 'icon': 'event_available', 'link': reverse_lazy('admin:index')},
                     {
                         'title': 'Roster',
                         'icon': 'group',

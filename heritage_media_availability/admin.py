@@ -17,7 +17,7 @@ from django.contrib import admin, messages
 from django.contrib.admin.models import DELETION, LogEntry
 from django.template.response import TemplateResponse
 from unfold.admin import ModelAdmin
-from unfold.widgets import UnfoldAdminSelectWidget
+from unfold.widgets import SELECT_CLASSES, UnfoldAdminSelect2Widget
 
 from .models import ClosedMonth, Member, Submission
 from .months import month_label, shift_month, upcoming_months
@@ -47,6 +47,29 @@ class MemberAdmin(ModelAdmin):
         would also wipe their submission history, which the spec says to keep.
         """
         return False
+
+
+def month_dropdown(attrs=None):
+    """
+    The admin's month dropdown: Unfold's styled Select2 list instead of the
+    browser's native one (#39, #40), with its search box hidden because the
+    lists are short (13 months or so). Select2 ships with Django's admin, so
+    nothing extra is installed. It's still a real <select> underneath, so
+    forms submit and validate exactly as before.
+
+    Used by the close-month form here and the dashboard's month picker.
+    """
+    return UnfoldAdminSelect2Widget(attrs={
+        # Select2 reads its options from data- attributes:
+        # never show the search box, and fill the space it's given.
+        'data-minimum-results-for-search': 'Infinity',
+        'data-width': '100%',
+        # Until Select2 takes over (a moment after the page loads), the plain
+        # <select> shows. Unfold's regular select styling makes that moment
+        # look the same instead of flashing a bare browser dropdown.
+        'class': ' '.join(SELECT_CLASSES),
+        **(attrs or {}),
+    })
 
 
 # AD-8 lets Skye close past months too; 6 months back covers any realistic
@@ -84,12 +107,11 @@ class ClosedMonthForm(forms.ModelForm):
     The "close a month" form: one dropdown of months.
 
     A dropdown rather than a browser month picker (#39): it looks the same in
-    every browser (desktop Safari has no month picker at all), matches the
-    dashboard's month selector, and Unfold's select widget gives it the
-    admin's styling.
+    every browser (desktop Safari has no month picker at all) and matches the
+    dashboard's month selector (see month_dropdown).
     """
 
-    month = forms.ChoiceField(label='Month', widget=UnfoldAdminSelectWidget)
+    month = forms.ChoiceField(label='Month', widget=month_dropdown())
 
     class Meta:
         model = ClosedMonth

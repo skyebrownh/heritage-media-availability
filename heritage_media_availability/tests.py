@@ -52,6 +52,16 @@ def at_utc(*args):
     return mock.patch('django.utils.timezone.now', return_value=datetime(*args, tzinfo=UTC))
 
 
+def visible_text(response):
+    """
+    A page's words with the HTML tags removed and spaces collapsed, roughly
+    what a reader sees. Lets tests check wording like "5 of 7 responded"
+    even when the page styles the number and the words separately.
+    """
+    html = re.sub(r'<script.*?</script>', ' ', response.content.decode(), flags=re.S)
+    return ' '.join(re.sub(r'<[^>]+>', ' ', html).split())
+
+
 class TeamFormPageTests(TestCase):
     """The team form page at "/" (TF-1 to TF-4)."""
 
@@ -814,7 +824,11 @@ class ClosedMonthAdminTests(TestCase):
         ClosedMonth.objects.create(month='2026-11')
         response = self.client.get(self.add_url)
         html = response.content.decode()
-        self.assertRegex(html, r'<select name="month"[^>]*class="[^"]*border-base-200')
+        # Unfold's styled Select2 list, search box hidden, with its script loaded.
+        select = re.search(r'<select name="month"[^>]*>', html).group(0)
+        self.assertIn('unfold-admin-autocomplete', select)
+        self.assertIn('data-minimum-results-for-search="Infinity"', select)
+        self.assertContains(response, 'select2.full')
         options = re.findall(r'<option value="(\d{4}-\d{2})"[^>]*>([^<]*)</option>', html)
         self.assertEqual(options[0], ('2026-04', 'April 2026'))
         self.assertEqual(options[-1], ('2027-04', 'April 2027'))
@@ -1006,32 +1020,64 @@ class DashboardAccessTests(TestCase):
     """The dashboard is behind the admin login (AD-1) and linked from the admin home."""
 
     def test_logged_out_visitor_goes_to_login(self):
-        response = self.client.get(reverse('availability'))
+        response = self.client.get(reverse('admin:index'))
         self.assertRedirects(
-            response, f"{reverse('admin:login')}?next={reverse('availability')}", fetch_redirect_response=False
+            response, f"{reverse('admin:login')}?next={reverse('admin:index')}", fetch_redirect_response=False
         )
 
-    def test_logged_in_admin_sees_dashboard(self):
+    def test_logged_in_admin_sees_dashboard_on_the_home_page(self):
+        # #40: logging in lands on the dashboard.
         self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
-        response = self.client.get(reverse('availability'))
+        response = self.client.get(reverse('admin:index'))
         self.assertContains(response, 'Availability for')
         self.assertContains(response, 'id="tracker"')
         self.assertContains(response, 'id="by-person"')
         self.assertContains(response, 'id="by-date"')
 
-    def test_admin_home_links_to_dashboard(self):
+    def test_empty_roster_draws_no_empty_card_slots(self):
+        # Regression (#40): an empty {% capture %} still holds blank space, which
+        # Unfold's card drew as an empty footer bar. With nobody on the roster,
+        # there's no count, no Copy button, and no copy-text footer at all.
         self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
         response = self.client.get(reverse('admin:index'))
-        self.assertContains(response, f'href="{reverse("availability")}"')
-        # The usual roster links are still there.
-        self.assertContains(response, reverse('admin:heritage_media_availability_member_changelist'))
+        self.assertContains(response, 'No one on the roster was on the team for this month.', count=3)
+        self.assertNotContains(response, 'class="copy-area"')
+        self.assertNotContains(response, 'data-copy-target="')  # the attribute, not the script's mentions
+        self.assertNotContains(response, 'class="dashboard-count"')
+        # Unfold's card footer bar (its border-top wrapper) isn't drawn.
+        self.assertNotContains(response, 'border-t border-base-200 flex items-center')
+
+    def test_month_picker_is_the_styled_dropdown(self):
+        # The dashboard isn't an admin form page, so it must add Select2's
+        # script itself, or the dropdown would quietly stay the native one.
+        self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
+        response = self.client.get(reverse('admin:index'))
+        select = re.search(r'<select name="month"[^>]*>', response.content.decode()).group(0)
+        self.assertIn('id="month-select"', select)
+        self.assertIn('unfold-admin-autocomplete', select)
+        self.assertIn('data-minimum-results-for-search="Infinity"', select)
+        for asset in ['select2.full', 'unfold/js/select2.init.js', 'admin/css/vendor/select2/select2']:
+            with self.subTest(asset=asset):
+                self.assertContains(response, asset)
+
+    def test_old_dashboard_link_redirects_home_keeping_the_month(self):
+        # #40: bookmarks of /admin/availability/ still work.
+        response = self.client.get('/admin/availability/', {'month': '2026-12'})
+        self.assertRedirects(response, f"{reverse('admin:index')}?month=2026-12", fetch_redirect_response=False)
+
+    def test_dashboard_is_built_from_unfold_not_tailwind(self):
+        # #40: the admin home uses Unfold's styles plus admin.css, never the team form's app.css.
+        self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
+        response = self.client.get(reverse('admin:index'))
+        self.assertNotContains(response, 'heritage_media_availability/app.css')
+        self.assertContains(response, 'heritage_media_availability/admin.css')
 
     def test_sidebar_links_to_every_screen(self):
         # #39: Unfold's sidebar (UNFOLD["SIDEBAR"] in settings) on every admin page.
         self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
         response = self.client.get(reverse('admin:heritage_media_availability_member_changelist'))
         for name in [
-            'availability',
+            'admin:index',
             'admin:heritage_media_availability_member_changelist',
             'admin:heritage_media_availability_closedmonth_changelist',
             'admin:heritage_media_availability_submission_changelist',
@@ -1054,7 +1100,7 @@ class DashboardMonthTests(TestCase):
     def test_opens_on_next_month(self):
         with at_utc(2026, 10, 5, 16, 0):
             self.assertEqual(default_month(), '2026-11')
-            response = self.client.get(reverse('availability'))
+            response = self.client.get(reverse('admin:index'))
         self.assertContains(response, 'Availability for November 2026')
 
     def test_options_list_past_months_with_data_then_upcoming(self):
@@ -1066,7 +1112,7 @@ class DashboardMonthTests(TestCase):
 
     def test_past_month_can_be_chosen(self):
         with at_utc(2026, 10, 5, 16, 0):
-            response = self.client.get(reverse('availability'), {'month': '2026-08'})
+            response = self.client.get(reverse('admin:index'), {'month': '2026-08'})
         self.assertContains(response, 'Availability for August 2026')
         self.assertContains(response, '<option value="2026-08" selected>', html=False)
 
@@ -1074,7 +1120,7 @@ class DashboardMonthTests(TestCase):
         with at_utc(2026, 10, 5, 16, 0):
             for value in ['2026-06', '2030-01', 'junk', '']:
                 with self.subTest(month=value):
-                    response = self.client.get(reverse('availability'), {'month': value})
+                    response = self.client.get(reverse('admin:index'), {'month': value})
                     self.assertContains(response, 'Availability for November 2026')
 
 
@@ -1110,8 +1156,10 @@ class TrackerTests(TestCase):
     def test_page_shows_count_status_and_time(self):
         self.submit(self.bob)
         self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
-        response = self.client.get(reverse('availability'), {'month': '2026-10'})
-        self.assertContains(response, '1 of 3 responded')
+        response = self.client.get(reverse('admin:index'), {'month': '2026-10'})
+        # The tracker's count, right after its card title. (The by-date note can
+        # also say "1 of 3 responded", so a bare search could match that instead.)
+        self.assertIn('Responses 1 of 3 responded', visible_text(response))
         self.assertContains(response, 'Not responded', count=2)
         # 19:15 UTC is 3:15 pm in New York.
         self.assertContains(response, 'Oct 2, 3:15 p.m.')
@@ -1143,10 +1191,10 @@ class TrackerTests(TestCase):
         self.assertEqual((responses.responded_count, responses.total), (0, 2))
 
         self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
-        response = self.client.get(reverse('availability'), {'month': '2026-10'})
+        response = self.client.get(reverse('admin:index'), {'month': '2026-10'})
         self.assertContains(response, 'id="no-longer-active"')
         self.assertContains(response, 'Cara Diaz')
-        self.assertContains(response, '0 of 2 responded')
+        self.assertIn('Responses 0 of 2 responded', visible_text(response))
 
     def test_inactive_member_who_didnt_respond_is_not_listed(self):
         self.cara.is_active = False
@@ -1377,7 +1425,7 @@ class ByPersonTests(TestCase):
         self.assertIn('Tom: NA', by_person_text(month_responses(self.month)))
 
     def test_page_shows_answers_notes_and_copy_text(self):
-        response = self.client.get(reverse('availability'), {'month': self.month})
+        response = self.client.get(reverse('admin:index'), {'month': self.month})
         self.assertContains(response, 'No response')
         self.assertContains(response, 'Available all month')
         self.assertContains(response, escape("Can't make rehearsal on the 19th."))
@@ -1387,16 +1435,18 @@ class ByPersonTests(TestCase):
     def test_notes_are_escaped(self):
         bob = Member.objects.get(first_name='Bob')
         Submission.objects.create(member=bob, month=self.month, kind='available_all', notes='<b>busy</b>')
-        response = self.client.get(reverse('availability'), {'month': self.month})
+        response = self.client.get(reverse('admin:index'), {'month': self.month})
         self.assertContains(response, '&lt;b&gt;busy&lt;/b&gt;')
         self.assertNotContains(response, '<b>busy</b>')
 
     def test_no_longer_active_shows_answers(self):
-        response = self.client.get(reverse('availability'), {'month': self.month})
+        response = self.client.get(reverse('admin:index'), {'month': self.month})
         section = response.content.decode().split('id="no-longer-active"')[1]
         self.assertIn('Pat Rivera', section)
-        self.assertIn('<th scope="col">Answer</th>', section)
-        self.assertRegex(section, r'Pat Rivera</th>\s*<td>\s*2\s')
+        self.assertRegex(section, r'<th[^>]*>\s*Answer\s*</th>')
+        # Pat's row reads name, then her answer (the 2nd), then her time.
+        section_text = ' '.join(re.sub(r'<[^>]+>', ' ', section).split())
+        self.assertRegex(section_text, r'Pat Rivera 2 Oct \d')
 
 
 # The start of SPEC.md's by-date copy example, character for character.
@@ -1455,10 +1505,11 @@ class ByDateTests(TestCase):
         self.assertTrue(text.startswith('1: Jane\n2: Sam\n3: Bob'))
 
     def test_page_shows_weekdays_and_copy_text(self):
-        response = self.client.get(reverse('availability'), {'month': self.month})
+        response = self.client.get(reverse('admin:index'), {'month': self.month})
         # December 4, 2026 is a Friday.
-        self.assertContains(response, '<th scope="row">Fri 4</th>', html=False)
-        self.assertContains(response, '<td>Bob, Jane</td>', html=False)
+        # Unfold's table: each cell's text sits in its own <div>.
+        text = visible_text(response)
+        self.assertIn('Fri 4 Bob, Jane', text)
         self.assertContains(response, 'Unavailable all month:</strong> Sam')
         self.assertContains(
             response, f'id="by-date-text" aria-labelledby="by-date-text-label">{escape(SPEC_BY_DATE_FULL)}</pre>'
@@ -1476,7 +1527,7 @@ class ByDateEmptyTests(TestCase):
     def by_date_section(self):
         """The By date section's HTML for October 2026 (always in the month list on Oct 5, 2026)."""
         with at_utc(2026, 10, 5, 16, 0):
-            response = self.client.get(reverse('availability'), {'month': '2026-10'})
+            response = self.client.get(reverse('admin:index'), {'month': '2026-10'})
         return response.content.decode().split('id="by-date"')[1]
 
     def test_no_responses_yet(self):
@@ -1513,7 +1564,7 @@ class CopyButtonTests(TestCase):
 
     def page(self, month):
         """The dashboard's HTML for a month."""
-        return self.client.get(reverse('availability'), {'month': month}).content.decode()
+        return self.client.get(reverse('admin:index'), {'month': month}).content.decode()
 
     def test_one_button_per_copy_block(self):
         html = self.page('2026-12')
@@ -1525,11 +1576,25 @@ class CopyButtonTests(TestCase):
 
     def test_buttons_have_distinct_screen_reader_names(self):
         html = self.page('2026-12')
-        self.assertIn('<span class="copy-label">Copy</span><span class="visually-hidden"> by-person text</span>', html)
-        self.assertIn('<span class="copy-label">Copy</span><span class="visually-hidden"> by-date text</span>', html)
+        self.assertIn('<span data-copy-label>Copy</span><span class="sr-only"> by-person text</span>', html)
+        self.assertIn('<span data-copy-label>Copy</span><span class="sr-only"> by-date text</span>', html)
+
+    def test_copy_text_starts_collapsed(self):
+        # #40: each copy text sits in a closed "Show copy text" section, so the
+        # cards stay short; the Copy button doesn't need it open.
+        html = self.page('2026-12')
+        for target in ['by-person-text', 'by-date-text']:
+            with self.subTest(target=target):
+                self.assertRegex(html, rf'<details class="copy-area">\s*<summary id="{target}-label">Show copy text</summary>')
+
+    def test_people_column_then_dates_column(self):
+        # #40: "No longer active" sits under By person (left column), before By date (right column).
+        html = self.page('2026-12')
+        self.assertLess(html.index('id="by-person"'), html.index('id="no-longer-active"'))
+        self.assertLess(html.index('id="no-longer-active"'), html.index('id="by-date"'))
 
     def test_live_region_for_announcements(self):
-        self.assertIn('id="copy-status" class="visually-hidden" role="status" aria-live="polite"', self.page('2026-12'))
+        self.assertIn('id="copy-status" class="sr-only" role="status" aria-live="polite"', self.page('2026-12'))
 
     def test_no_by_date_button_without_copy_text(self):
         # Nobody in this scenario answered for November: "No responses yet." and nothing to copy.
