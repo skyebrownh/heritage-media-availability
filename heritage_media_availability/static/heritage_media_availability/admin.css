@@ -28,22 +28,56 @@
   gap: 1.5rem;
 }
 
-/* AD-3: the month picker row: label, dropdown, Show button. Wraps on phones. */
-.dashboard-month {
+/* The month row: the month picker on the left, and the month's
+   Open/Closed badge and Close or Reopen button on the right (#43).
+   When there isn't room for both (phones), the badge and button wrap
+   onto their own line. */
+.dashboard-month-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+}
+
+/* AD-3: the month picker: label, dropdown, Show button, always on one
+   line (nowrap), so Show stays beside the dropdown. On a narrow phone
+   the dropdown shrinks rather than pushing Show underneath. */
+.dashboard-month {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: 0.5rem;
+  min-width: 0;
 }
 .dashboard-month label {
   font-weight: 600;
   color: var(--color-font-important-light);
 }
 /* The month dropdown's width: 16rem, shrinking on narrow phones. The
-   dropdown itself fills this box (data-width="100%"). */
+   dropdown itself fills this box (data-width="100%"). A set width (not
+   just a flex size) so the row knows how much room the picker needs. */
 .dashboard-month-picker {
-  flex: 0 1 16rem;
+  width: 16rem;
+  flex: 0 1 auto;
   min-width: 0;
+}
+
+/* AD-8 (#43): the month's badge and Close or Reopen button, side by side. */
+.dashboard-month-status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+/* The badge, sized to match the button beside it: Unfold's default button
+   is 0.5rem by 0.75rem of padding plus a 1px border around 20px-high text.
+   Plain CSS overrides Unfold's smaller badge sizes (h-6 px-2) because
+   Unfold's utilities sit in a CSS layer, which unlayered rules beat. */
+.month-badge-large {
+  height: auto;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid transparent;
+  line-height: 1.25rem;
 }
 
 /* AD-4: "5 of 7 responded" in the Responses card header, with the number large. */
@@ -138,6 +172,55 @@
 .copy-fallback {
   margin-bottom: 0.5rem;
   color: var(--color-red-700);
+}
+
+/* ---------------------------------------------------------------------------
+   The Months page (#43), templates/admin/.../closedmonth/months.html.
+   It reuses .dashboard for the space between its sections.
+   ------------------------------------------------------------------------ */
+
+/* Each month's name links to its dashboard. The text keeps the table's
+   normal color (Skye's call), with a small right arrow after it to show
+   it's a link. On hover the name and arrow both turn the accent color,
+   with no underline. */
+.months-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-weight: 600;
+  color: var(--color-font-important-light);
+}
+.months-link .material-symbols-outlined {
+  font-size: 1rem;
+}
+.months-link:hover {
+  color: var(--color-primary-600);
+}
+
+/* Reopen: Unfold's borderless "ghost" button, in the accent color so it
+   reads as a quiet action rather than another gray badge. On hover, a
+   faint indigo wash instead of Unfold's gray, which matched the row hover. */
+.month-reopen {
+  color: var(--color-primary-600);
+}
+.month-reopen:hover {
+  background-color: var(--color-primary-50);
+}
+
+/* Close and Reopen are small forms; keep them from adding space in the row. */
+.month-action {
+  margin: 0;
+}
+
+/* "Show past months": collapsed until clicked, styled like "Show copy text". */
+.months-past summary {
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-primary-600);
+}
+.months-past[open] summary {
+  margin-bottom: 1rem;
 }
 
 /* ---------------------------------------------------------------------------

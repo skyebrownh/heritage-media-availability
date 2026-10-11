@@ -13,16 +13,19 @@ buttons), so this module prepares data in the shapes they take: a table is
 (Django escapes it) or HTML we've built safely with format_html().
 """
 
-from django import forms
+from urllib.parse import urlencode
+
 from django.template.defaultfilters import date as date_filter
 from django.template.defaultfilters import linebreaksbr
 from django.template.loader import render_to_string
 from django.utils.html import format_html
+from django.urls import reverse
 from django.utils.timezone import localtime
 
-from .admin import month_dropdown
+from .admin import closable_months, month_action, month_dropdown, month_status_label
 from .dashboard import default_month, month_options, month_responses
 from .formatting import by_date_text, by_person_text
+from .models import ClosedMonth
 from .months import month_label
 
 # How submission times read on the dashboard, in Eastern time: "Oct 2, 3:15 p.m."
@@ -95,12 +98,30 @@ def copy_button_attrs(target, message):
     return format_html('data-copy-target="{}" data-copied-message="{}"', target, message)
 
 
+def close_controls(request, month):
+    """
+    AD-8 (#43): the chosen month's Open/Closed badge and Close month or
+    Reopen month button, for the month row at the top of the dashboard.
+
+    Months outside the Months page's window (older than 6 back) get the
+    badge only. Afterwards the button comes back here, to the same month.
+    Returns (badge_html, button_html); the button is "" when there's none.
+    """
+    closed = ClosedMonth.objects.filter(month=month).exists()
+    upcoming, past = closable_months()
+    if month not in upcoming + past:
+        return month_status_label(closed, large=True), ''
+    here = f"{reverse('admin:index')}?{urlencode({'month': month})}"
+    return month_status_label(closed, large=True), month_action(request, month, closed, here)
+
+
 def dashboard_callback(request, context):
     """Add the chosen month's responses to the admin home page (AD-3 to AD-7)."""
     month, past, upcoming = chosen_month(request)
     select_html, select_media = month_select(month, past, upcoming)
     responses = month_responses(month)
     by_date = responses.by_date
+    month_status, month_button = close_controls(request, month)
 
     context.update({
         # Unfold shows the title in the page header and the browser tab.
@@ -108,6 +129,8 @@ def dashboard_callback(request, context):
         'month': month,
         'month_select': select_html,
         'month_select_media': select_media,
+        'month_status': month_status,
+        'month_button': month_button,
         'responses': responses,
         'by_date': by_date,
         # AD-4: active members A-Z.

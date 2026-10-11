@@ -2,23 +2,32 @@
 Django admin setup: the screens Skye uses behind the admin login (AD-1).
 
 - Members: the roster (AD-2)
-- Closed months: close and reopen months (AD-8)
+- Months (ClosedMonth): close and reopen months (AD-8, #43)
 - Submissions: a read-only history of everything the team has submitted
 
 Django builds the add/edit/list pages for us from the models; this file
-chooses which columns, filters and actions appear, and adds the one custom
-step (confirming before a month is closed). The screens are styled by
+chooses which columns, filters and actions appear. The one custom screen is
+the Months page, with its Close and Reopen buttons. The screens are styled by
 django-unfold (#39): each admin class extends Unfold's ModelAdmin, and the
 site's name, colors and sidebar are in UNFOLD in config/settings.py.
 """
 
-from django import forms
+from urllib.parse import urlencode
+
 from django.contrib import admin, messages
 from django.contrib.admin.models import DELETION, LogEntry
+from django.core.exceptions import PermissionDenied
+from django.http import Http404, HttpResponseNotAllowed
+from django.shortcuts import redirect
+from django.template.loader import render_to_string
 from django.template.response import TemplateResponse
+from django.urls import path, reverse
+from django.utils.html import format_html
+from django.utils.http import url_has_allowed_host_and_scheme
 from unfold.admin import ModelAdmin
 from unfold.widgets import SELECT_CLASSES, UnfoldAdminSelect2Widget
 
+from .dashboard import month_responses
 from .models import ClosedMonth, Member, Submission
 from .months import month_label, shift_month, upcoming_months
 
@@ -57,7 +66,7 @@ def month_dropdown(attrs=None):
     nothing extra is installed. It's still a real <select> underneath, so
     forms submit and validate exactly as before.
 
-    Used by the close-month form here and the dashboard's month picker.
+    Used by the dashboard's month picker.
     """
     return UnfoldAdminSelect2Widget(attrs={
         # Select2 reads its options from data- attributes:
@@ -77,69 +86,82 @@ def month_dropdown(attrs=None):
 MONTHS_BACK_TO_CLOSE = 6
 
 
-def closable_month_choices():
+def closable_months():
     """
-    The "close a month" dropdown's options: 6 months back through 6 ahead.
+    AD-8: the months Skye can close or reopen, as (upcoming, past).
 
-    Grouped like the dashboard's month selector, oldest first, e.g. on
-    Oct 9, 2026: "Past months" Apr 2026 to Sep 2026, then "This month and
-    ahead" Oct 2026 to Apr 2027. Months that are already closed are still
-    listed, marked "(closed)", so choosing one gets the friendly "already
-    closed" message instead of a puzzling gap in the list.
+    upcoming is this month through 6 ahead, oldest first (the team form's
+    months); past is the 6 months before that, newest first, so the month
+    most likely to need closing is at the top. E.g. on Oct 10, 2026:
+    upcoming Oct 2026 to Apr 2027, past Sep 2026 back to Apr 2026.
+    The Months page shows these, the dashboard only offers buttons for
+    them, and the close and reopen pages refuse any other month.
     """
-    closed = set(ClosedMonth.objects.values_list('month', flat=True))
-
-    def option(month):
-        label = month_label(month)
-        return (month, f'{label} (closed)' if month in closed else label)
-
-    coming_up = upcoming_months()
-    past = [shift_month(coming_up[0], -offset) for offset in range(MONTHS_BACK_TO_CLOSE, 0, -1)]
-    return [
-        ('', 'Choose a month'),
-        ('Past months', [option(month) for month in past]),
-        ('This month and ahead', [option(month) for month in coming_up]),
-    ]
+    upcoming = upcoming_months()
+    past = [shift_month(upcoming[0], -offset) for offset in range(1, MONTHS_BACK_TO_CLOSE + 1)]
+    return upcoming, past
 
 
-class ClosedMonthForm(forms.ModelForm):
+def month_status_label(closed, large=False):
     """
-    The "close a month" form: one dropdown of months.
+    AD-8: Unfold's badge for a month: Open (green) or Closed (gray).
 
-    A dropdown rather than a browser month picker (#39): it looks the same in
-    every browser (desktop Safari has no month picker at all) and matches the
-    dashboard's month selector (see month_dropdown).
+    large=True gives it the same height as the button beside it on the
+    dashboard (.month-badge-large in admin.css), so the pair lines up.
     """
+    context = {'text': 'Closed'} if closed else {'text': 'Open', 'variant': 'success'}
+    if large:
+        context['class'] = 'month-badge-large'
+    return render_to_string('unfold/helpers/label.html', context)
 
-    month = forms.ChoiceField(label='Month', widget=month_dropdown())
 
-    class Meta:
-        model = ClosedMonth
-        fields = ['month']
+def month_action(request, month, closed, next_url, short=False):
+    """
+    AD-8: the Close or Reopen button for one month (#43).
 
-    def __init__(self, *args, **kwargs):
-        """Build the month list when the form is made, so it follows today's date."""
-        super().__init__(*args, **kwargs)
-        self.fields['month'].choices = closable_month_choices()
+    Both are small forms that post straight away, with no confirmation:
+    each is undone with one click of the other (Skye's call, 2026-10-10).
+    next_url is where to come back to afterwards (the dashboard or the
+    Months page). short=True says "Close"/"Reopen" for the Months table,
+    where the row already names the month; the dashboard says "Close month".
+    """
+    action = 'reopen' if closed else 'close'
+    return render_to_string(
+        'admin/heritage_media_availability/closedmonth/_month_action.html',
+        {
+            'action_url': reverse(f'admin:heritage_media_availability_closedmonth_{action}', args=[month]),
+            'verb': 'Reopen' if closed else 'Close',
+            'verb_suffix': '' if short else ' month',
+            # Told apart at a glance (Skye's call, 2026-10-10): Close is
+            # Unfold's white outline button with a padlock; Reopen is quieter,
+            # its borderless "ghost" button in indigo (.month-reopen in
+            # admin.css) with a circular arrow. A gray fill was too close to
+            # the gray Closed badge and the table's row hover.
+            'icon': 'replay' if closed else 'lock',
+            'variant': 'ghost' if closed else 'default',
+            'button_class': 'month-reopen' if closed else '',
+            'next': next_url,
+            'month_label': month_label(month),
+        },
+        request=request,  # so {% csrf_token %} works in the form
+    )
 
 
 @admin.register(ClosedMonth)
 class ClosedMonthAdmin(ModelAdmin):
     """
-    AD-8: close and reopen months, including past ones.
+    AD-8: the Months page, where Skye closes and reopens months (#43).
 
-    Closing = adding a row (after a confirmation page).
-    Reopening = the "Reopen selected months" action, which deletes rows.
+    A ClosedMonth row still means "closed": closing adds one and
+    reopening deletes it. Rather than Django's
+    add-a-record form and list, the list page is replaced by a table of
+    months, each with a Close or Reopen button, and those buttons (here
+    and on the dashboard) go to the two pages added in get_urls().
     """
 
-    form = ClosedMonthForm
-    list_display = ['label', 'closed_at']
-    actions = ['reopen_months']
-
-    @admin.display(description='Month', ordering='month')
-    def label(self, closed_month):
-        """Show "November 2026" instead of "2026-11" in the list."""
-        return month_label(closed_month.month)
+    def has_add_permission(self, request):
+        """No add-a-record form: the Close buttons replace it (#43)."""
+        return False
 
     def has_change_permission(self, request, obj=None):
         """
@@ -150,75 +172,140 @@ class ClosedMonthAdmin(ModelAdmin):
         return False
 
     def has_delete_permission(self, request, obj=None):
-        """
-        Hide Django's generic Delete button and action so "Reopen selected
-        months" is the one, clearly named way to reopen.
-        """
+        """Hide Django's generic Delete button and action, so Reopen is the one way to reopen."""
         return False
 
-    @admin.action(description='Reopen selected months')
-    def reopen_months(self, request, queryset):
+    def get_urls(self):
         """
-        Reopen months by deleting their rows; the team can submit again right away.
+        Add the close and reopen pages, e.g. .../closedmonth/2026-11/close/.
 
-        #16: record each reopen in admin's History and "Recent actions" first
-        (it must happen before the rows are gone). Closing is recorded by
-        Django's add view, so together they show who closed or reopened a
-        month and when. A month's ID is the month itself ("2026-11"), so if it
-        is closed again later, its History page shows the whole timeline.
+        They go before Django's own URLs, which would otherwise read
+        "2026-11/close" as a record's ID. admin_view() puts them behind the
+        admin login and Django's CSRF check, like every other admin page.
         """
-        labels = ', '.join(str(closed_month) for closed_month in queryset)
-        # Like Django's log_deletions(), but with a description; the History
-        # page leaves the Action column blank for deletions without one.
-        LogEntry.objects.log_actions(
-            user_id=request.user.pk,
-            queryset=queryset,
-            action_flag=DELETION,
-            change_message='Reopened the month.',
-        )
-        queryset.delete()
-        self.message_user(request, f'Reopened {labels}.', messages.SUCCESS)
+        def url(action, view):
+            return path(
+                f'<str:month>/{action}/',
+                self.admin_site.admin_view(view),
+                name=f'heritage_media_availability_closedmonth_{action}',
+            )
 
-    def construct_change_message(self, request, form, formsets, add=False):
-        """
-        #16: describe a close in History as "Closed the month." rather than
-        Django's generic "Added." (Editing is off, so adding is the only case.)
-        """
-        return 'Closed the month.'
+        return [url('close', self.close_view), url('reopen', self.reopen_view)] + super().get_urls()
 
-    def add_view(self, request, form_url='', extra_context=None):
+    def changelist_view(self, request, extra_context=None):
         """
-        AD-8: closing asks for confirmation.
+        AD-8: the Months page, in place of Django's list of ClosedMonth rows.
 
-        Pressing Save first shows a confirmation page instead of saving. That
-        page posts the same month back with a "confirm" field, and only then
-        does Django's normal add view run and save the row. The form is
-        validated both times, so a month closed in another tab in the
-        meantime still gets the "already closed" error.
+        This month and ahead first, then the past months (collapsed in the
+        template). Each row: the month (linking to its dashboard), Open or
+        Closed, how many have responded, and a Close or Reopen button.
         """
-        if request.method == 'POST' and 'confirm' not in request.POST:
-            form = self.get_form(request)(request.POST)
-            if form.is_valid():
-                month = form.cleaned_data['month']
-                context = {
-                    **self.admin_site.each_context(request),
-                    'opts': self.model._meta,
-                    'title': f'Close {month_label(month)}?',
-                    'month': month,
-                    'month_label': month_label(month),
-                }
-                return TemplateResponse(
-                    request, 'admin/heritage_media_availability/closedmonth/confirm_close.html', context
-                )
+        if not self.has_view_permission(request):
+            raise PermissionDenied
+        closed = set(ClosedMonth.objects.values_list('month', flat=True))
+        upcoming, past = closable_months()
+        here = request.path
 
-        # Only one Save button: "Save and add another" / "Save and continue
-        # editing" would skip past the point of a single, deliberate close.
-        extra_context = {
+        def table(months):
+            rows = []
+            for month in months:
+                responses = month_responses(month)
+                rows.append([
+                    # The month's name links to its dashboard; the small right
+                    # arrow (decorative, so hidden from screen readers) shows it's a link.
+                    format_html(
+                        '<a class="months-link" href="{}?{}">{}'
+                        '<span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></a>',
+                        reverse('admin:index'), urlencode({'month': month}), month_label(month),
+                    ),
+                    month_status_label(month in closed),
+                    # "5 of 6" (the column header says Responses); a dash before anyone was on the team.
+                    f'{responses.responded_count} of {responses.total}' if responses.total else '–',
+                    month_action(request, month, month in closed, here, short=True),
+                ])
+            return {'headers': ['Month', 'Status', 'Responses', 'Action'], 'rows': rows}
+
+        context = {
+            **self.admin_site.each_context(request),
+            'opts': self.model._meta,
+            'title': 'Months',
+            'upcoming_table': table(upcoming),
+            'past_table': table(past),
             **(extra_context or {}),
-            'show_save_and_add_another': False,
-            'show_save_and_continue': False,
         }
-        return super().add_view(request, form_url, extra_context)
+        return TemplateResponse(request, 'admin/heritage_media_availability/closedmonth/months.html', context)
+
+    def check_month(self, request, month, permission):
+        """
+        Refuse anything outside the Months page's window (404) or without
+        the right permission (403). The URL is just text, so the server
+        checks it rather than trusting the button that sent it.
+        """
+        upcoming, past = closable_months()
+        if month not in upcoming + past:
+            raise Http404('That month can’t be closed or reopened here.')
+        if not request.user.has_perm(f'heritage_media_availability.{permission}_closedmonth'):
+            raise PermissionDenied
+
+    def next_url(self, request):
+        """
+        Where to go after closing or reopening: the page the button was on.
+
+        Only addresses on this site are followed, so a link can't use the
+        page to send Skye somewhere else; anything else goes to the Months page.
+        """
+        url = request.POST.get('next') or request.GET.get('next')
+        if url and url_has_allowed_host_and_scheme(url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+            return url
+        return reverse('admin:heritage_media_availability_closedmonth_changelist')
+
+    def close_view(self, request, month):
+        """
+        AD-8: close a month straight away. No confirmation (decision
+        2026-10-10): reopening is one click if it was a mistake. POST only,
+        so a link or a browser prefetching pages can never close a month.
+        If it was closed meanwhile (another tab), Skye gets a note instead.
+        """
+        if request.method != 'POST':
+            return HttpResponseNotAllowed(['POST'])
+        self.check_month(request, month, 'add')
+        label = month_label(month)
+        # get_or_create: if two tabs close at once, only one row is made
+        # and only that one is recorded in History.
+        closed_month, created = ClosedMonth.objects.get_or_create(month=month)
+        if created:
+            # #16: shows in the month's History as "Closed the month."
+            self.log_addition(request, closed_month, 'Closed the month.')
+            self.message_user(request, f'Closed {label}.', messages.SUCCESS)
+        else:
+            self.message_user(request, f'{label} was already closed.', messages.INFO)
+        return redirect(self.next_url(request))
+
+    def reopen_view(self, request, month):
+        """
+        AD-8: reopen a month straight away, like closing. POST only, so a
+        link or a browser prefetching pages can never reopen a month.
+        """
+        if request.method != 'POST':
+            return HttpResponseNotAllowed(['POST'])
+        self.check_month(request, month, 'delete')
+        label = month_label(month)
+        rows = ClosedMonth.objects.filter(month=month)
+        if rows.exists():
+            # #16: record the reopen in History before the row is gone.
+            # Like Django's log_deletions(), but with a description; the
+            # History page leaves the Action column blank for deletions without one.
+            LogEntry.objects.log_actions(
+                user_id=request.user.pk,
+                queryset=rows,
+                action_flag=DELETION,
+                change_message='Reopened the month.',
+            )
+            rows.delete()
+            self.message_user(request, f'Reopened {label}.', messages.SUCCESS)
+        else:
+            self.message_user(request, f'{label} was already open.', messages.INFO)
+        return redirect(self.next_url(request))
 
 
 @admin.register(Submission)

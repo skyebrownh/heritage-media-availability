@@ -1,0 +1,27 @@
+{% extends "admin/base_site.html" %}
+{% load unfold %}
+
+{% comment %}
+  AD-8 (#43): the Months page, where Skye closes and reopens months. It
+  replaces Django's list of ClosedMonth rows (ClosedMonthAdmin.changelist_view
+  prepares the two tables). Built from Unfold's card and table components.
+
+  This month and ahead are shown first, since that's where closing happens
+  each cycle. Past months sit in a section that starts collapsed
+  (<details>), so they're there for catch-up without crowding the page.
+{% endcomment %}
+
+{% block content %}
+<div class="dashboard">
+  {% component "unfold/components/card.html" with title="This month and ahead" description="Closing a month stops the team from submitting for it. Reopen it any time." %}
+    {% component "unfold/components/table.html" with table=upcoming_table card_included=1 %}{% endcomponent %}
+  {% endcomponent %}
+
+  <details class="months-past">
+    <summary>Show past months</summary>
+    {% component "unfold/components/card.html" with title="Past months" %}
+      {% component "unfold/components/table.html" with table=past_table card_included=1 %}{% endcomponent %}
+    {% endcomponent %}
+  </details>
+</div>
+{% endblock %}

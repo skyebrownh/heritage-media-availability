@@ -300,7 +300,8 @@ UNFOLD = {
                         'link': reverse_lazy('admin:heritage_media_availability_member_changelist'),
                     },
                     {
-                        'title': 'Closed months',
+                        # The Months page: close and reopen months (#43).
+                        'title': 'Months',
                         'icon': 'lock',
                         'link': reverse_lazy('admin:heritage_media_availability_closedmonth_changelist'),
                     },

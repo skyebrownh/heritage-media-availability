@@ -20,14 +20,27 @@
 {% block content %}
 <div class="dashboard">
 
-  {# AD-3: month selector. A plain GET form, so each month has its own link (?month=2026-11) that can be bookmarked. #}
-  <form method="get" id="month-form" class="dashboard-month">
-    <label for="month-select">Month</label>
-    {# Sized by .dashboard-month-picker; the dropdown fills it. #}
-    <div class="dashboard-month-picker">{{ month_select }}</div>
-    {# The button works without JavaScript; the script below just saves a click. #}
-    {% component "unfold/components/button.html" with submit=1 variant="default" %}Show{% endcomponent %}
-  </form>
+  {# The month row: picking a month on the left, its Open/Closed status and button on the right. #}
+  <div class="dashboard-month-row">
+    {# AD-3: month selector. A plain GET form, so each month has its own link (?month=2026-11) that can be bookmarked. #}
+    <form method="get" id="month-form" class="dashboard-month">
+      <label for="month-select">Month</label>
+      {# Sized by .dashboard-month-picker; the dropdown fills it. #}
+      <div class="dashboard-month-picker">{{ month_select }}</div>
+      {# The button works without JavaScript; the script below just saves a click. #}
+      {% component "unfold/components/button.html" with submit=1 variant="default" %}Show{% endcomponent %}
+    </form>
+
+    {% comment %}
+      AD-8 (#43): Open or Closed, and Close month / Reopen month (none for
+      months older than 6 back). Outside the month form on purpose: Reopen
+      is its own small form, and forms can't sit inside each other.
+    {% endcomment %}
+    <div class="dashboard-month-status" id="month-status">
+      {{ month_status }}
+      {{ month_button }}
+    </div>
+  </div>
 
   {# AD-4: response tracker. Active members only; everyone listed here is counted. #}
   {% comment %}

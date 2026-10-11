@@ -188,6 +188,10 @@ class ClosedMonth(models.Model):
 
     class Meta:
         ordering = ['-month']  # "YYYY-MM" sorts correctly as text, so newest first.
+        # The admin calls these "Months" (#43): the Months page lists every
+        # month, open or closed. Only the label changes; the table doesn't.
+        verbose_name = 'month'
+        verbose_name_plural = 'months'
         constraints = [
             models.CheckConstraint(condition=Q(month__regex=MONTH_PATTERN), name='closed_month_format'),
         ]
