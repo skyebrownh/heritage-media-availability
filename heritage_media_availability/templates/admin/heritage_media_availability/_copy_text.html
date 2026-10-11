@@ -1,0 +1,17 @@
+{% comment %}
+  AD-7: a view's copy text, shown exactly as the Copy button will copy it,
+  with the message shown if the browser refuses to copy. Used by the By
+  person and By date cards on the dashboard (templates/admin/index.html).
+  Takes "target" (the text block's id) and "text".
+
+  Collapsed by default (<details>) so both cards stay short; the Copy button
+  works without opening it, and "Show copy text" opens it to read first.
+  If copying fails, the script opens it and selects the text.
+{% endcomment %}
+<details class="copy-area">
+  <summary id="{{ target }}-label">Show copy text</summary>
+  {# Shown only if the browser refuses to copy; the script then selects the text instead. #}
+  <p class="copy-fallback" id="{{ target }}-fallback" hidden>Couldn't copy automatically. The text is selected, so use your device's Copy command.</p>
+  {# Kept on one template line so no stray spaces or blank lines end up in the copied text. #}
+  <pre class="copy-text" id="{{ target }}" aria-labelledby="{{ target }}-label">{{ text }}</pre>
+</details>

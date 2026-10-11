@@ -1,0 +1,209 @@
+{% extends "admin/index.html" %}
+{% load unfold %}
+
+{% comment %}
+  The admin home page is Skye's availability dashboard (#40, AD-3 to AD-7).
+
+  This file has the same name as Unfold's admin home and extends it. Our app
+  comes before Unfold in INSTALLED_APPS, so Django finds this file first,
+  and {% extends %} carries on to Unfold's copy for the header and sidebar.
+  The data comes from admin_dashboard.dashboard_callback().
+
+  Built from Unfold's own components (card, table, button, text), so it
+  matches the rest of the admin. The few extra styles (copy text, callout,
+  two-column layout) are plain CSS in static/.../admin.css, named below.
+{% endcomment %}
+
+{# The month dropdown's script and styles (Select2). Admin form pages add these automatically; this page has no form object, so it adds them here. #}
+{% block extrahead %}{{ block.super }}{{ month_select_media }}{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+
+  {# AD-3: month selector. A plain GET form, so each month has its own link (?month=2026-11) that can be bookmarked. #}
+  <form method="get" id="month-form" class="dashboard-month">
+    <label for="month-select">Month</label>
+    {# Sized by .dashboard-month-picker; the dropdown fills it. #}
+    <div class="dashboard-month-picker">{{ month_select }}</div>
+    {# The button works without JavaScript; the script below just saves a click. #}
+    {% component "unfold/components/button.html" with submit=1 variant="default" %}Show{% endcomponent %}
+  </form>
+
+  {# AD-4: response tracker. Active members only; everyone listed here is counted. #}
+  {% comment %}
+    (Each {% if %} wraps its {% capture %} rather than sitting inside it: an
+    empty capture still holds blank space, which the card would treat as
+    content and draw an empty header slot or footer bar for.)
+    The count sits in the card header's action slot (right side), because
+    Unfold's in-card table is meant to be the card's only body content: it
+    stretches to the card's edges with negative margins and would cover
+    anything placed above it.
+  {% endcomment %}
+  {% if responses.active %}{% capture as tracker_count silent %}
+      {# Big number, small words; read aloud as "5 of 7 responded". #}
+      <p class="dashboard-count"><strong>{{ responses.responded_count }}</strong> of {{ responses.total }} responded</p>
+  {% endcapture %}{% endif %}
+  {% component "unfold/components/card.html" with title="Responses" action=tracker_count %}
+    <div id="tracker">
+      {% if responses.active %}
+        {% component "unfold/components/table.html" with table=tracker_table card_included=1 %}{% endcomponent %}
+      {% else %}
+        {% component "unfold/components/text.html" %}No one on the roster was on the team for this month.{% endcomponent %}
+      {% endif %}
+    </div>
+  {% endcomponent %}
+
+  {% comment %}
+    Two columns on wide screens, stacked on narrow ones (.dashboard-columns):
+    left is about people (By person, then No longer active), right is about
+    dates (By date). By date can run to 31 rows, so putting No longer active
+    under By person uses the space that would otherwise sit empty there.
+  {% endcomment %}
+  <div class="dashboard-columns">
+    <div class="dashboard-column">
+      {# AD-5: each active member's answer, in the copy text's order. The Copy button sits in the card's action slot. #}
+      {% if responses.active %}{% capture as by_person_copy silent %}
+          {% component "unfold/components/button.html" with type="button" variant="primary" extra_attrs=by_person_copy_attrs %}<span data-copy-label>Copy</span><span class="sr-only"> by-person text</span>{% endcomponent %}
+      {% endcapture %}{% endif %}
+      {# The copy text goes in the card's footer slot, under the table (which must be the body's only content). #}
+      {% if responses.active %}{% capture as by_person_footer silent %}
+          {% include "admin/heritage_media_availability/_copy_text.html" with target="by-person-text" text=by_person_text %}
+      {% endcapture %}{% endif %}
+      {% component "unfold/components/card.html" with title="By person" action=by_person_copy footer=by_person_footer %}
+        <div id="by-person">
+          {% if responses.active %}
+            {% component "unfold/components/table.html" with table=by_person_table card_included=1 %}{% endcomponent %}
+          {% else %}
+            {% component "unfold/components/text.html" %}No one on the roster was on the team for this month.{% endcomponent %}
+          {% endif %}
+        </div>
+      {% endcomponent %}
+
+      {# Decision 2026-10-03: inactive members who responded, with full names. Not counted, never in copy text. #}
+      {% if responses.inactive %}
+        {% component "unfold/components/card.html" with title="No longer active" description="These people responded for this month but are no longer active. They aren't counted above or included in copy text." %}
+          <div id="no-longer-active">
+            {% component "unfold/components/table.html" with table=inactive_table card_included=1 %}{% endcomponent %}
+          </div>
+        {% endcomponent %}
+      {% endif %}
+    </div>
+
+    <div class="dashboard-column">
+      {# AD-6: each day anyone is out, and who. People unavailable all month are listed once, in the callout at the top. #}
+      {% if by_date_text %}{% capture as by_date_copy silent %}
+          {% component "unfold/components/button.html" with type="button" variant="primary" extra_attrs=by_date_copy_attrs %}<span data-copy-label>Copy</span><span class="sr-only"> by-date text</span>{% endcomponent %}
+      {% endcapture %}{% endif %}
+      {% if by_date_text %}{% capture as by_date_footer silent %}
+          {% include "admin/heritage_media_availability/_copy_text.html" with target="by-date-text" text=by_date_text %}
+      {% endcapture %}{% endif %}
+      {% component "unfold/components/card.html" with title="By date" action=by_date_copy footer=by_date_footer %}
+        <div id="by-date">
+          {% if not responses.active %}
+            {% component "unfold/components/text.html" %}No one on the roster was on the team for this month.{% endcomponent %}
+          {% elif not responses.responded_count %}
+            {% component "unfold/components/text.html" %}No responses yet.{% endcomponent %}
+          {% elif not by_date.anyone_out %}
+            {# Everyone who answered is available all month. The count says how many have answered so far. #}
+            {% component "unfold/components/text.html" %}Nobody is unavailable this month ({{ responses.responded_count }} of {{ responses.total }} responded).{% endcomponent %}
+          {% else %}
+            {% if by_date.all_month %}
+              {# Skye's #34 feedback: easy to miss as a plain line, so it's a soft amber callout (.dashboard-callout). #}
+              <p class="dashboard-callout">
+                <span class="material-symbols-outlined" aria-hidden="true">event_busy</span>
+                <span><strong>Unavailable all month:</strong> {{ by_date.all_month|join:", " }}</span>
+              </p>
+            {% endif %}
+            {% if by_date.days %}
+              {# .table-below-callout makes room so the edge-to-edge table can't slide up over the callout. #}
+              <div class="{% if by_date.all_month %}table-below-callout{% endif %}">
+                {% component "unfold/components/table.html" with table=by_date_table card_included=1 %}{% endcomponent %}
+              </div>
+            {% endif %}
+          {% endif %}
+        </div>
+      {% endcomponent %}
+    </div>
+  </div>
+
+  {# AD-7: screen readers announce whatever the copy script writes here ("By-person text copied."). #}
+  <div id="copy-status" class="sr-only" role="status" aria-live="polite"></div>
+</div>
+
+<script>
+  // Show the new month as soon as it's picked, without needing the Show button.
+  // The styled dropdown (Select2) announces changes through jQuery, which
+  // plain addEventListener() doesn't hear, so listen with Django's jQuery
+  // when it's loaded, and fall back to a plain listener if it isn't.
+  (function () {
+    var form = document.getElementById('month-form');
+    var submit = function () { form.submit(); };
+    if (window.django && django.jQuery) {
+      django.jQuery('#month-select').on('change', submit);
+    } else {
+      document.getElementById('month-select').addEventListener('change', submit);
+    }
+  })();
+
+  // AD-7: Copy buttons. Each button names its text block in data-copy-target.
+  // Wrapped in a function so these names don't leak into the page's global scope.
+  (function () {
+    var liveRegion = document.getElementById('copy-status');
+
+    // Tell screen readers what happened. Clearing first makes them announce
+    // the message again even if it's the same as last time.
+    function announce(message) {
+      liveRegion.textContent = '';
+      setTimeout(function () { liveRegion.textContent = message; }, 50);
+    }
+
+    // Copy plain text (so Google Docs gets no fonts or colors). Browsers only
+    // offer the Clipboard API on https:// or localhost, and can still refuse;
+    // either way the returned promise fails and the fallback below runs.
+    function copyText(text) {
+      if (!navigator.clipboard || !navigator.clipboard.writeText) {
+        return Promise.reject(new Error('Clipboard API not available'));
+      }
+      return navigator.clipboard.writeText(text);
+    }
+
+    // Fallback: highlight the whole block so Skye can copy it herself.
+    function selectText(element) {
+      var range = document.createRange();
+      range.selectNodeContents(element);
+      var selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
+    document.querySelectorAll('[data-copy-target]').forEach(function (button) {
+      var block = document.getElementById(button.dataset.copyTarget);
+      // data-copy-label marks the visible word, separate from styling classes.
+      var label = button.querySelector('[data-copy-label]');
+      var fallback = document.getElementById(button.dataset.copyTarget + '-fallback');
+      var resetTimer;
+
+      button.addEventListener('click', function () {
+        fallback.hidden = true;
+        // textContent is the text exactly as shown: HTML codes like &amp;
+        // become real characters again, and line breaks are kept.
+        copyText(block.textContent).then(function () {
+          label.textContent = 'Copied!';
+          announce(button.dataset.copiedMessage);
+          // Back to "Copy" after 2 seconds; a second click restarts the timer.
+          clearTimeout(resetTimer);
+          resetTimer = setTimeout(function () { label.textContent = 'Copy'; }, 2000);
+        }).catch(function () {
+          // The text can only be selected while it's showing, so open its
+          // collapsed "Show copy text" section first.
+          var details = block.closest('details');
+          if (details) { details.open = true; }
+          selectText(block);
+          fallback.hidden = false;
+          announce(fallback.textContent);
+        });
+      });
+    });
+  })();
+</script>
+{% endblock %}

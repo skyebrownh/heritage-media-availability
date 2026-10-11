@@ -6,17 +6,19 @@ The `urlpatterns` list routes URLs to views. For more information please see:
 """
 from django.contrib import admin
 from django.urls import include, path
-
-from heritage_media_availability import views
+from django.views.generic import RedirectView
 
 # The admin's name and look come from django-unfold's UNFOLD settings (#39).
 
 urlpatterns = [
-    # Skye's availability dashboard (AD-3 to AD-7). admin_view() gives it the
-    # admin's protection: logged-out visitors go to the admin login (AD-1).
-    # It must come before 'admin/', or Django's admin would claim this URL
-    # and show "page not found".
-    path('admin/availability/', admin.site.admin_view(views.availability_dashboard), name='availability'),
+    # The availability dashboard moved to the admin home page (#40). This old
+    # address forwards there, keeping ?month=, so bookmarks still work. It
+    # must come before 'admin/', or the admin would claim it as "not found".
+    path(
+        'admin/availability/',
+        RedirectView.as_view(pattern_name='admin:index', query_string=True),
+        name='availability',
+    ),
     # Django's built-in admin, styled by django-unfold: Skye's login (AD-1),
     # the roster (AD-2), and closed months (AD-8).
     path('admin/', admin.site.urls),
