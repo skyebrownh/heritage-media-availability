@@ -33,6 +33,12 @@ SECRET_KEY = env_required('SECRET_KEY')
 # Defaults to off: forgetting to set DEBUG should give the safe behavior.
 DEBUG = env_bool('DEBUG', default=False)
 
+# #45: true only on the staging site (a test copy of the app on Railway, with
+# its own database). Shows a "Test site" banner on every page and lets the
+# data-replacing commands (seed, load_snapshot) run there. Defaults to off,
+# so production never shows the banner. See heritage_media_availability/staging.py.
+STAGING = env_bool('STAGING', default=False)
+
 # Hostnames this site may be served under, e.g. "localhost,127.0.0.1".
 ALLOWED_HOSTS = env_list('ALLOWED_HOSTS')
 
@@ -99,6 +105,8 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                # #45: {{ is_staging }} on every page, for the test-site banner.
+                'heritage_media_availability.staging.staging_context',
             ],
         },
     },
@@ -285,6 +293,10 @@ UNFOLD = {
     # The admin home page is Skye's availability dashboard (#40): this
     # function adds the month's data, and templates/admin/index.html shows it.
     'DASHBOARD_CALLBACK': 'heritage_media_availability.admin_dashboard.dashboard_callback',
+    # #45: on the staging site only, a "Test site" label in the admin header
+    # and "[TEST]" before each tab title (nothing on production).
+    'ENVIRONMENT': 'heritage_media_availability.staging.environment_label',
+    'ENVIRONMENT_TITLE_PREFIX': 'heritage_media_availability.staging.environment_title_prefix',
     'COLORS': {'primary': TAILWIND_INDIGO},
     'SIDEBAR': {
         # Only four screens, so no search box and no list of every app.

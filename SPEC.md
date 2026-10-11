@@ -227,10 +227,12 @@ Week 1 gets a bare app deployed early, so hosting surprises show up before the r
 
 ### Pilot plan
 
+The pilot runs on the staging site, a separate copy of the app with its own database and a "Test site" banner, refreshed with a copy of production's roster and answers, so testers can try anything without touching real data. The launch uses production.
+
 1. Pick 3–5 people, including at least one of the least tech-comfortable volunteers. Watch one of them use it in person if you can.
-2. Have each person submit for November and one later month, then resubmit once.
+2. Have each person submit (on staging) for November and one later month, then resubmit once.
 3. Check that everyone finished without help, the all-month options made sense, and the copy output pasted cleanly into the Google Doc.
-4. Fix what comes up, then share the link with the full team in the group chat.
+4. Fix what comes up, then share the production link with the full team in the group chat.
 
 ### Open questions
 
@@ -248,3 +250,5 @@ Spec decisions that aren't captured in a requirement above, with the date they w
 - 2026-10-09: On the dashboard (#40), logging in lands straight on the month's responses; the old `/admin/availability/` link forwards there, keeping the chosen month. By person and By date sit side by side on wide screens, with "No longer active" under By person (people on the left, dates on the right) so the columns stay closer in length. Each view's copy text starts collapsed behind "Show copy text"; the Copy button works without opening it. The "Unavailable all month" note in By date is a soft amber callout so it isn't missed. Unfold's Recent actions panel is dropped from the home page; each record's History page keeps those details.
 - 2026-10-10: On the Months page (#43), past months start collapsed behind "Show past months", since closing usually happens for this month and ahead. Each month's name links to its dashboard, to check responses before closing. Months older than 6 back show only their Open or Closed status on the dashboard, with no button. The sidebar's "Closed months" becomes "Months". Closing no longer asks for confirmation, unlike the earlier version of AD-8: closing and reopening are each one click, so a mistake is quick to undo.
 - 2026-10-10: On the roster (#42), each person shows an Active or Inactive badge and a one-click Deactivate / Activate button that applies at once (recorded in their History), replacing the checkboxes that waited for Save. The edit page's Active checkbox still works. The name opens the edit page. All / Active / Inactive tabs (with counts) sit beside the roster's search box, and a month dropdown beside the submission history's.
+- 2026-10-10: Testing happens on a staging site on Railway (#45): the same code as production, deployed from `main`, with its own database and a "Test site" banner on every page, so testers' practice entries never reach production. The pilot runs there; the launch uses production. There's no separate staging branch.
+- 2026-10-11: Staging can be refreshed with a copy of production's members, submissions and closed months (not admin logins or History), so testers see the real roster. Copying only ever runs toward staging (or a local database), never into production. Previewing unmerged changes on staging is not set up for now.

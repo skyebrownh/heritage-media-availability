@@ -5,8 +5,10 @@ Run them with:  uv run --env-file .env python manage.py test
 Django creates a separate throwaway test database, so your real data is safe.
 """
 
+import json
 import os
 import runpy
+import tempfile
 import re
 from datetime import UTC, date, datetime, timedelta
 from io import StringIO
@@ -1242,6 +1244,36 @@ class DisplayNameTests(SimpleTestCase):
         )
 
 
+class StagingBannerTests(TestCase):
+    """#45: the staging site says "Test site" on every page; production never does."""
+
+    def setUp(self):
+        self.admin = get_user_model().objects.create_superuser('skye', password='test-pass-123')
+
+    def pages(self):
+        """The team form, an admin page, and the admin login, as (name, response)."""
+        team_form = self.client.get(reverse('heritage_media_availability:team_form'))
+        login = Client().get(reverse('admin:login'))
+        self.client.force_login(self.admin)
+        admin_page = self.client.get(reverse('admin:heritage_media_availability_member_changelist'))
+        return [('team form', team_form), ('login', login), ('admin', admin_page)]
+
+    @override_settings(STAGING=True)
+    def test_staging_shows_the_banner_everywhere(self):
+        for name, response in self.pages():
+            with self.subTest(page=name):
+                self.assertIn('Test site', visible_text(response))
+        # Unfold's admin tabs start with [TEST].
+        admin_page = self.pages()[2][1]
+        self.assertRegex(admin_page.content.decode(), r'<title>\s*\[TEST\]')
+
+    def test_production_shows_no_banner(self):
+        for name, response in self.pages():
+            with self.subTest(page=name):
+                self.assertNotIn('Test site', visible_text(response))
+                self.assertNotContains(response, '[TEST]')
+
+
 class DashboardAccessTests(TestCase):
     """The dashboard is behind the admin login (AD-1) and linked from the admin home."""
 
@@ -1484,6 +1516,122 @@ def seed(*args, answer=None):
     return out.getvalue()
 
 
+def load_snapshot(data, answer=None):
+    """
+    Run `manage.py load_snapshot` with `data` (a list, written as JSON) piped
+    in, as on staging, and return its output. `answer` is typed at the prompt.
+    """
+    out = StringIO()
+    stdin = StringIO(json.dumps(data))
+    with mock.patch('sys.stdin', stdin):
+        if answer is None:
+            call_command('load_snapshot', '-', '--no-input', stdout=out)
+        else:
+            with mock.patch('builtins.input', return_value=answer):
+                call_command('load_snapshot', '-', stdout=out)
+    return out.getvalue()
+
+
+def production_snapshot():
+    """
+    What `dumpdata` would print on production: two members (one inactive),
+    a submission, and a closed month, with production's IDs.
+    """
+    return [
+        {'model': 'heritage_media_availability.member', 'pk': 41,
+         'fields': {'first_name': 'Grace', 'last_name': 'Kim', 'is_active': True,
+                    'created_at': '2026-09-01T12:00:00Z'}},
+        {'model': 'heritage_media_availability.member', 'pk': 42,
+         'fields': {'first_name': 'Henry', 'last_name': 'Park', 'is_active': False,
+                    'created_at': '2026-09-01T12:00:00Z'}},
+        {'model': 'heritage_media_availability.submission', 'pk': 300,
+         'fields': {'member': 41, 'month': '2026-11', 'kind': 'days', 'days': [3, 20],
+                    'notes': 'Away the 3rd', 'submitted_at': '2026-10-02T15:00:00Z'}},
+        {'model': 'heritage_media_availability.closedmonth', 'pk': '2026-09',
+         'fields': {'closed_at': '2026-10-01T12:00:00Z'}},
+    ]
+
+
+@override_settings(DEBUG=True)
+class LoadSnapshotTests(TestCase):
+    """#45: refreshing staging (or a local database) with a copy of production's data."""
+
+    def setUp(self):
+        self.admin = get_user_model().objects.create_superuser('skye', password='test-pass-123')
+        old = Member.objects.create(first_name='Old', last_name='Member')
+        Submission.objects.create(member=old, month='2026-11', kind='available_all')
+
+    def test_replaces_the_data_with_the_snapshot(self):
+        output = load_snapshot(production_snapshot())
+        self.assertIn('Loaded the snapshot: 2 members, 1 submissions, 1 closed months.', output)
+        self.assertEqual(sorted(str(m) for m in Member.objects.all()), ['Grace Kim', 'Henry Park'])
+        # Links and details survive: the submission still belongs to Grace.
+        submission = Submission.objects.get()
+        self.assertEqual((str(submission.member), submission.days, submission.notes), ('Grace Kim', [3, 20], 'Away the 3rd'))
+        self.assertFalse(Member.objects.get(first_name='Henry').is_active)
+        self.assertTrue(ClosedMonth.objects.filter(month='2026-09').exists())
+        # Staging keeps its own admin login.
+        self.assertTrue(get_user_model().objects.filter(username='skye').exists())
+
+    def test_new_records_after_loading_get_fresh_ids(self):
+        # The ID counters move past production's IDs, so adding someone works.
+        load_snapshot(production_snapshot())
+        added = Member.objects.create(first_name='Jack', last_name='Moore')
+        self.assertGreater(added.pk, 42)
+        self.assertGreater(Submission.objects.create(member=added, month='2026-11', kind='available_all').pk, 300)
+
+    def test_works_in_a_color_terminal(self):
+        # Regression (#45): run in a real terminal, the command's colored
+        # output style leaked color codes into the ID-counter SQL, and
+        # Postgres rejected it. force_color makes the test run like a terminal.
+        with mock.patch('sys.stdin', StringIO(json.dumps(production_snapshot()))):
+            call_command('load_snapshot', '-', '--no-input', force_color=True, stdout=StringIO())
+        self.assertEqual(Member.objects.count(), 2)
+
+    def test_refuses_anything_but_the_three_app_tables(self):
+        # E.g. admin accounts with password hashes must never be loaded.
+        data = production_snapshot() + [{'model': 'auth.user', 'pk': 1, 'fields': {'username': 'x'}}]
+        with self.assertRaisesMessage(CommandError, 'contains auth.user'):
+            load_snapshot(data)
+        self.assertTrue(Member.objects.filter(first_name='Old').exists())
+
+    def test_refuses_empty_or_broken_input(self):
+        with self.assertRaisesMessage(CommandError, 'empty'):
+            load_snapshot([])
+        with mock.patch('sys.stdin', StringIO('[{"model": ')):
+            with self.assertRaisesMessage(CommandError, "isn't valid JSON"):
+                call_command('load_snapshot', '-', '--no-input', stdout=StringIO())
+        self.assertTrue(Member.objects.filter(first_name='Old').exists())
+
+    def test_refuses_on_production(self):
+        with override_settings(DEBUG=False, STAGING=False, ALLOWED_HOSTS=['heritage.up.railway.app']), \
+                mock.patch.dict(connection.settings_dict, {'HOST': 'postgres.railway.internal'}):
+            with self.assertRaisesMessage(CommandError, 'DEBUG is off'):
+                load_snapshot(production_snapshot())
+        self.assertTrue(Member.objects.filter(first_name='Old').exists())
+
+    def test_runs_on_staging(self):
+        with override_settings(STAGING=True, DEBUG=False, ALLOWED_HOSTS=['heritage-staging.up.railway.app']), \
+                mock.patch.dict(connection.settings_dict, {'HOST': 'postgres.railway.internal'}):
+            load_snapshot(production_snapshot())
+        self.assertEqual(Member.objects.count(), 2)
+
+    def test_anything_but_yes_cancels(self):
+        output = load_snapshot(production_snapshot(), answer='no')
+        self.assertIn('Nothing was changed', output)
+        self.assertTrue(Member.objects.filter(first_name='Old').exists())
+
+    def test_reads_a_file_too(self):
+        # A saved file works as well as piped input (e.g. refreshing a local database).
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'production-snapshot.json'
+            path.write_text(json.dumps(production_snapshot()), encoding='utf-8')
+            call_command('load_snapshot', str(path), '--no-input', stdout=StringIO())
+        self.assertEqual(Member.objects.count(), 2)
+        with self.assertRaisesMessage(CommandError, 'No file called "no-such-file.json"'):
+            call_command('load_snapshot', 'no-such-file.json', '--no-input', stdout=StringIO())
+
+
 # The test runner always sets DEBUG off; seed refuses without it.
 @override_settings(DEBUG=True)
 class SeedCommandTests(TestCase):
@@ -1505,6 +1653,30 @@ class SeedCommandTests(TestCase):
     def test_refuses_on_a_database_that_isnt_local(self):
         with mock.patch.dict(connection.settings_dict, {'HOST': 'postgres.railway.internal'}):
             with self.assertRaisesMessage(CommandError, 'not this computer'):
+                seed('roster')
+        self.assertTrue(Member.objects.filter(first_name='Old').exists())
+
+    # #45: the staging route. Railway's database is never on localhost and DEBUG is off there.
+    STAGING_SITE = {'STAGING': True, 'DEBUG': False, 'ALLOWED_HOSTS': ['heritage-staging.up.railway.app']}
+
+    def test_runs_on_staging(self):
+        with override_settings(**self.STAGING_SITE), \
+                mock.patch.dict(connection.settings_dict, {'HOST': 'postgres.railway.internal'}):
+            output = seed('roster')
+        self.assertIn('Loaded "roster"', output)
+        self.assertFalse(Member.objects.filter(first_name='Old').exists())
+
+    def test_refuses_staging_flag_on_a_non_staging_address(self):
+        # E.g. STAGING=true set on production by mistake: its address has no "staging".
+        hosts = ['heritage.up.railway.app', 'heritage-staging.up.railway.app']
+        with override_settings(**{**self.STAGING_SITE, 'ALLOWED_HOSTS': hosts}):
+            with self.assertRaisesMessage(CommandError, 'heritage.up.railway.app, which isn\'t a staging address'):
+                seed('roster')
+        self.assertTrue(Member.objects.filter(first_name='Old').exists())
+
+    def test_refuses_staging_address_without_the_staging_flag(self):
+        with override_settings(**{**self.STAGING_SITE, 'STAGING': False}):
+            with self.assertRaisesMessage(CommandError, 'DEBUG is off'):
                 seed('roster')
         self.assertTrue(Member.objects.filter(first_name='Old').exists())
 

@@ -6,37 +6,17 @@
 
 Deletes all members, submissions and closed months (and their admin History),
 then loads one scenario from seeding.SCENARIOS. Admin accounts are kept, so
-you stay logged in. It only runs on a local development database.
+you stay logged in. It only runs on a local development database or on
+staging (#45); see staging.unsafe_reason().
 """
 
-from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
 
 from ...models import ClosedMonth, Member, Submission
 from ...months import month_label, shift_month
 from ...seeding import SCENARIOS, reset, this_month
-
-# Database hosts that mean "this computer". An empty host connects through
-# a local socket file, which is also this computer.
-LOCAL_HOSTS = {'', 'localhost', '127.0.0.1', '::1'}
-
-
-def unsafe_reason(debug, database):
-    """
-    Why seeding here would be unsafe, or None if it's fine.
-
-    Two independent checks, so one mistake isn't enough to wipe real data:
-    production runs with DEBUG off, and Railway's database is never on
-    localhost. Even `railway ssh` into the live app fails both.
-    """
-    if not debug:
-        return 'DEBUG is off. seed only runs in local development (DEBUG=true in .env).'
-    host = database.get('HOST') or ''
-    if host not in LOCAL_HOSTS:
-        return f'The database host is "{host}", not this computer. seed only runs on a local database.'
-    return None
-
+from ...staging import unsafe_reason
 
 def counted(number, noun):
     """E.g. "1 closed month", "9 members"."""
@@ -46,7 +26,7 @@ def counted(number, noun):
 class Command(BaseCommand):
     """Reset local data and load a named test scenario."""
 
-    help = 'Delete all members, submissions and closed months, then load a test scenario. Local only.'
+    help = 'Delete all members, submissions and closed months, then load a test scenario. Local or staging only.'
 
     def add_arguments(self, parser):
         """Define the command's options: the scenario name, --list, and --no-input."""
@@ -73,7 +53,7 @@ class Command(BaseCommand):
                 raise CommandError(f'Name a scenario to load: {names}. Use --list for descriptions.')
             raise CommandError(f'No scenario called "{scenario}". Choose one of: {names}.')
 
-        reason = unsafe_reason(settings.DEBUG, connection.settings_dict)
+        reason = unsafe_reason(connection.settings_dict)
         if reason:
             raise CommandError(reason)
 
