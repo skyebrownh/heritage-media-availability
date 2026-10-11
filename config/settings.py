@@ -53,12 +53,16 @@ INSTALLED_APPS = [
     # Django looks for templates app by app, in this order, and uses the
     # first match. So the order decides whose version of a page wins:
     # 1. Our app: the team form and Skye's admin pages. First, so our own
-    #    admin templates (e.g. the close-month confirmation) win.
+    #    admin templates (e.g. the dashboard home page) win.
     'heritage_media_availability',
     # 2. django-unfold (#39): the admin's look. Before django.contrib.admin,
     #    so its templates replace the stock admin's. It also swaps in its own
     #    admin site when Django starts; settings are in UNFOLD below.
     'unfold',
+    # Unfold's extra list filters (#42): the roster's All/Active/Inactive
+    # and the submission history's month dropdown, beside the search box.
+    # Part of the django-unfold package; also before django.contrib.admin.
+    'unfold.contrib.filters',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',

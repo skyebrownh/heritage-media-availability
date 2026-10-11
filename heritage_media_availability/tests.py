@@ -680,6 +680,127 @@ class RosterAdminTests(TestCase):
         self.assertNotContains(response, 'delete_selected')
 
 
+class RosterOneClickTests(TestCase):
+    """#42: the roster's badges, one-click Deactivate / Activate, name links and filter tabs."""
+
+    def setUp(self):
+        self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
+        self.grace = Member.objects.create(first_name='Grace', last_name='Kim')
+        self.tom = Member.objects.create(first_name='Tom', last_name='Lee', is_active=False)
+        self.list_url = reverse('admin:heritage_media_availability_member_changelist')
+
+    def toggle_url(self, member):
+        return reverse('admin:heritage_media_availability_member_toggle_active', args=[member.pk])
+
+    def row(self, html, member):
+        """One member's table row, found by their edit link."""
+        edit_url = reverse('admin:heritage_media_availability_member_change', args=[member.pk])
+        return re.search(rf'(?s)<tr[^>]*>(?:(?!</tr>).)*href="{edit_url}".*?</tr>', html).group(0)
+
+    def test_rows_show_badge_link_and_matching_button(self):
+        html = self.client.get(self.list_url).content.decode()
+        grace, tom = self.row(html, self.grace), self.row(html, self.tom)
+        # The name is a visible link (arrow) to the edit page.
+        self.assertIn('class="row-link"', grace)
+        self.assertIn('Grace Kim', grace)
+        # Active member: green badge, outline "Deactivate" button with an X.
+        self.assertIn('Active', grace)
+        self.assertIn('close</span>', grace)
+        self.assertIn('Deactivate', grace)
+        self.assertIn(f'formaction="{self.toggle_url(self.grace)}"', grace)
+        # Inactive member: gray badge, quiet indigo "Activate" button with a check.
+        self.assertIn('Inactive', tom)
+        self.assertNotIn('Deactivate', tom)
+        self.assertIn('check</span>', tom)
+        self.assertIn('Activate', tom)
+        self.assertIn('quiet-action', tom)
+        # Screen readers hear who each button is for.
+        self.assertIn('<span class="sr-only"> Grace Kim</span>', grace)
+
+    def test_no_editable_checkboxes_or_save_bar(self):
+        # #42: list_editable is gone, so nothing waits for a Save button.
+        response = self.client.get(self.list_url)
+        self.assertNotContains(response, 'name="form-0-is_active"')
+        self.assertNotContains(response, 'name="_save"')
+
+    def test_buttons_sit_inside_the_list_form_without_nesting_forms(self):
+        # The table is inside Django's changelist form; a nested <form> would
+        # be dropped by the browser, so the buttons borrow it (formaction).
+        html = self.client.get(self.list_url).content.decode()
+        start = html.index('id="changelist-form"')
+        inner = html[start:html.index('</form>', start)]
+        self.assertIn('formaction=', inner)
+        self.assertNotIn('<form', inner)
+
+    def test_deactivate_applies_at_once_with_message(self):
+        response = self.client.post(self.toggle_url(self.grace), follow=True)
+        self.assertRedirects(response, self.list_url)
+        self.assertContains(response, 'Grace Kim is now inactive.')
+        self.grace.refresh_from_db()
+        self.assertFalse(self.grace.is_active)
+
+    def test_activate_applies_at_once_with_message(self):
+        response = self.client.post(self.toggle_url(self.tom), follow=True)
+        self.assertContains(response, 'Tom Lee is now active.')
+        self.tom.refresh_from_db()
+        self.assertTrue(self.tom.is_active)
+
+    def test_returns_to_the_same_filtered_list(self):
+        # The browser says which page the button was on (Referer); off-site ones are ignored.
+        filtered = f'{self.list_url}?status=active&q=gr'
+        response = self.client.post(self.toggle_url(self.grace), headers={'referer': f'http://testserver{filtered}'})
+        self.assertRedirects(response, f'http://testserver{filtered}', fetch_redirect_response=False)
+        response = self.client.post(self.toggle_url(self.grace), headers={'referer': 'https://example.com/'})
+        self.assertRedirects(response, self.list_url, fetch_redirect_response=False)
+
+    def test_toggle_is_recorded_in_history(self):
+        # #16: shows on the member's History page.
+        self.client.post(self.toggle_url(self.grace))
+        self.client.post(self.toggle_url(self.grace))
+        entries = [
+            (entry.get_action_flag_display(), entry.get_change_message())
+            for entry in LogEntry.objects.filter(object_id=str(self.grace.pk)).order_by('pk')
+        ]
+        self.assertEqual(entries, [('Change', 'Marked inactive.'), ('Change', 'Marked active.')])
+        history = reverse('admin:heritage_media_availability_member_history', args=[self.grace.pk])
+        self.assertContains(self.client.get(history), 'Marked inactive.')
+
+    def test_toggle_needs_a_post_and_a_real_member(self):
+        with self.assertLogs('django.request', level='WARNING'):
+            self.assertEqual(self.client.get(self.toggle_url(self.grace)).status_code, 405)
+            missing = reverse('admin:heritage_media_availability_member_toggle_active', args=[9999])
+            self.assertEqual(self.client.post(missing).status_code, 404)
+        self.grace.refresh_from_db()
+        self.assertTrue(self.grace.is_active)
+
+    def test_toggle_needs_the_admin_login(self):
+        self.client.logout()
+        response = self.client.post(self.toggle_url(self.grace))
+        self.assertIn(reverse('admin:login'), response['Location'])
+        self.grace.refresh_from_db()
+        self.assertTrue(self.grace.is_active)
+
+    def test_status_filter_tabs_beside_search(self):
+        # All / Active (n) / Inactive (n) as one-click tabs, outside the Filters panel.
+        response = self.client.get(self.list_url, {'q': 'k'})
+        # (Anchored on the label: Unfold's class names contain ">" themselves.)
+        nav = re.search(r'(?s)aria-label="Filter by status">.*?</nav>', response.content.decode()).group(0)
+        tabs = re.findall(r'<a href="(\?[^"]*)"( class="active")?[^>]*>([^<]*)</a>', nav)
+        self.assertEqual(
+            [(text, bool(active)) for _, active, text in tabs],
+            [('All', True), ('Active (1)', False), ('Inactive (1)', False)],
+        )
+        # Each tab keeps the search ("q") while changing the status.
+        self.assertIn('status=inactive', tabs[2][0])
+        self.assertIn('q=k', tabs[2][0])
+        self.assertNotContains(response, 'name="status"')  # no radio buttons
+        for status, shown, hidden in [('active', 'Grace Kim', 'Tom Lee'), ('inactive', 'Tom Lee', 'Grace Kim')]:
+            with self.subTest(status=status):
+                response = self.client.get(self.list_url, {'status': status})
+                self.assertContains(response, shown)
+                self.assertNotContains(response, hidden)
+
+
 class SessionLengthTests(SimpleTestCase):
     """AD-1: the admin login lasts about 30 days."""
 
@@ -826,7 +947,7 @@ class MonthsPageTests(TestCase):
 
     def test_lists_this_month_and_ahead_then_past_months(self):
         response = self.client.get(self.list_url)
-        months = re.findall(r'class="months-link" href="[^"]*month=(\d{4}-\d{2})"', response.content.decode())
+        months = re.findall(r'class="row-link" href="[^"]*month=(\d{4}-\d{2})"', response.content.decode())
         # This month through 6 ahead, oldest first; then the 6 before, newest first.
         self.assertEqual(months, [
             '2026-10', '2026-11', '2026-12', '2027-01', '2027-02', '2027-03', '2027-04',
@@ -857,7 +978,7 @@ class MonthsPageTests(TestCase):
         self.assertIn(f'action="{self.reopen_url("2026-11")}"', html)
         self.assertNotIn(f'action="{self.close_url("2026-11")}"', html)
         self.assertIn('November 2026 arrow_forward Closed 0 of 2 replay Reopen', visible_text(response))
-        self.assertIn('month-reopen', html)
+        self.assertIn('quiet-action', html)
         # December is open: a Close button that comes back here.
         self.assertIn(f'action="{self.close_url("2026-12")}"', html)
         self.assertIn(f'name="next" value="{self.list_url}"', html)
@@ -967,7 +1088,7 @@ class DashboardCloseTests(TestCase):
         self.assertIn(f'action="{close_url}"', status)
         self.assertIn('name="next" value="/admin/?month=2026-11"', status)
         # The badge is sized to match the button beside it.
-        self.assertIn('month-badge-large', status)
+        self.assertIn('badge-large', status)
 
     def test_closed_month_has_reopen_button(self):
         ClosedMonth.objects.create(month='2026-11')
@@ -1060,6 +1181,21 @@ class SubmissionAdminTests(TestCase):
         self.assertContains(response, 'Bob Smith')
         self.assertContains(response, 'November 2026')
         self.assertContains(response, '3, 20')
+
+    def test_month_filter_beside_search(self):
+        # #42: a month dropdown, newest first, that narrows the list.
+        bob = Member.objects.get(first_name='Bob')
+        Submission.objects.create(member=bob, month='2026-12', kind='available_all')
+        url = reverse('admin:heritage_media_availability_submission_changelist')
+        html = self.client.get(url).content.decode()
+        select = re.search(r'(?s)<select[^>]*name="month".*?</select>', html).group(0)
+        self.assertEqual(
+            re.findall(r'<option value="(\d{4}-\d{2})"[^>]*>\s*([^<]*?)\s*</option>', select),
+            [('2026-12', 'December 2026'), ('2026-11', 'November 2026')],
+        )
+        response = self.client.get(url, {'month': '2026-12'})
+        self.assertContains(response, 'December 2026')
+        self.assertNotContains(response, '3, 20')
 
     def test_history_cannot_be_added_edited_or_deleted(self):
         pk = self.submission.pk
