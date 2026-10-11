@@ -808,120 +808,204 @@ class ClosedMonthModelTests(TestCase):
             ClosedMonth.objects.create(month='2026-13')
 
 
-class ClosedMonthAdminTests(TestCase):
-    """AD-8: closing (with confirmation) and reopening months in Django admin."""
+class MonthsPageTests(TestCase):
+    """AD-8 (#43): the Months page, and closing and reopening months (one click each)."""
 
     def setUp(self):
-        # The month dropdown follows today's date, so pin it (Oct 9, 2026, Eastern).
-        self.enterContext(at_utc(2026, 10, 9, 16, 0))
+        # The months listed follow today's date, so pin it (Oct 10, 2026, Eastern).
+        self.enterContext(at_utc(2026, 10, 10, 16, 0))
         admin_user = get_user_model().objects.create_superuser('skye', password='test-pass-123')
         self.client.force_login(admin_user)
-        self.add_url = reverse('admin:heritage_media_availability_closedmonth_add')
         self.list_url = reverse('admin:heritage_media_availability_closedmonth_changelist')
 
-    def test_add_form_offers_a_month_dropdown(self):
-        # #39: an Unfold-styled dropdown from 6 months back through 6 ahead.
-        ClosedMonth.objects.create(month='2026-11')
-        response = self.client.get(self.add_url)
-        html = response.content.decode()
-        # Unfold's styled Select2 list, search box hidden, with its script loaded.
-        select = re.search(r'<select name="month"[^>]*>', html).group(0)
-        self.assertIn('unfold-admin-autocomplete', select)
-        self.assertIn('data-minimum-results-for-search="Infinity"', select)
-        self.assertContains(response, 'select2.full')
-        options = re.findall(r'<option value="(\d{4}-\d{2})"[^>]*>([^<]*)</option>', html)
-        self.assertEqual(options[0], ('2026-04', 'April 2026'))
-        self.assertEqual(options[-1], ('2027-04', 'April 2027'))
-        self.assertEqual(len(options), 13)
-        # Already-closed months stay listed, marked like on the team form.
-        self.assertIn(('2026-11', 'November 2026 (closed)'), options)
-        self.assertNotContains(response, '_addanother')
-        self.assertNotContains(response, '_continue')
+    def close_url(self, month):
+        return reverse('admin:heritage_media_availability_closedmonth_close', args=[month])
 
-    def test_save_shows_confirmation_without_closing(self):
-        response = self.client.post(self.add_url, {'month': '2026-11'})
-        self.assertContains(response, 'Close November 2026?')
-        self.assertContains(response, 'Yes, close it')
-        # #39: Unfold has no breadcrumbs; Cancel is the way back to the list.
-        self.assertRegex(response.content.decode(), rf'<a href="{self.list_url}"[^>]*>\s*Cancel')
+    def reopen_url(self, month):
+        return reverse('admin:heritage_media_availability_closedmonth_reopen', args=[month])
+
+    def test_lists_this_month_and_ahead_then_past_months(self):
+        response = self.client.get(self.list_url)
+        months = re.findall(r'class="months-link" href="[^"]*month=(\d{4}-\d{2})"', response.content.decode())
+        # This month through 6 ahead, oldest first; then the 6 before, newest first.
+        self.assertEqual(months, [
+            '2026-10', '2026-11', '2026-12', '2027-01', '2027-02', '2027-03', '2027-04',
+            '2026-09', '2026-08', '2026-07', '2026-06', '2026-05', '2026-04',
+        ])
+        self.assertContains(response, 'This month and ahead')
+        # Past months start collapsed.
+        self.assertContains(response, '<details class="months-past">')
+        self.assertNotContains(response, '<details class="months-past" open')
+
+    def test_page_is_called_months_everywhere(self):
+        # The header's breadcrumb comes from the model's name, so it's
+        # renamed too (#43); "Closed months" is gone from the admin.
+        response = self.client.get(self.list_url)
+        self.assertIn('Heritage Media chevron_right Months', visible_text(response))
+        self.assertNotIn('Closed months', visible_text(response))
+
+    def test_rows_show_status_count_and_the_right_button(self):
+        ClosedMonth.objects.create(month='2026-11')
+        bob = Member.objects.create(first_name='Bob', last_name='Smith')
+        Member.objects.create(first_name='Jane', last_name='Doe')
+        Submission.objects.create(member=bob, month='2026-12', kind='available_all')
+        response = self.client.get(self.list_url)
+        html = response.content.decode()
+        # "1 of 2" without "responded" (the column is headed Responses).
+        self.assertIn('December 2026 arrow_forward Open 1 of 2 lock Close', visible_text(response))
+        # November is closed: a quiet indigo Reopen button (circular arrow), no Close.
+        self.assertIn(f'action="{self.reopen_url("2026-11")}"', html)
+        self.assertNotIn(f'action="{self.close_url("2026-11")}"', html)
+        self.assertIn('November 2026 arrow_forward Closed 0 of 2 replay Reopen', visible_text(response))
+        self.assertIn('month-reopen', html)
+        # December is open: a Close button that comes back here.
+        self.assertIn(f'action="{self.close_url("2026-12")}"', html)
+        self.assertIn(f'name="next" value="{self.list_url}"', html)
+        self.assertIn('Closed', visible_text(response))
+        self.assertIn('Open', visible_text(response))
+        # Each month links to its dashboard.
+        self.assertIn(f'href="{reverse("admin:index")}?month=2026-12"', html)
+
+    def test_close_needs_a_post(self):
+        # No confirmation page any more (decision 2026-10-10); a link,
+        # or a browser prefetching one, must never close a month.
+        with self.assertLogs('django.request', level='WARNING'):
+            response = self.client.get(self.close_url('2026-11'))
+        self.assertEqual(response.status_code, 405)
         self.assertFalse(ClosedMonth.objects.exists())
 
-    def test_confirming_closes_the_month(self):
-        response = self.client.post(self.add_url, {'month': '2026-11', 'confirm': 'yes'})
+    def test_close_happens_at_once(self):
+        response = self.client.post(self.close_url('2026-11'), follow=True)
         self.assertRedirects(response, self.list_url)
+        self.assertContains(response, 'Closed November 2026.')
         self.assertTrue(ClosedMonth.objects.filter(month='2026-11').exists())
 
     def test_past_months_can_be_closed(self):
         # AD-8: past months too, up to 6 months back.
-        self.client.post(self.add_url, {'month': '2026-04', 'confirm': 'yes'})
+        self.client.post(self.close_url('2026-04'))
         self.assertTrue(ClosedMonth.objects.filter(month='2026-04').exists())
 
-    def test_months_outside_the_dropdown_are_refused(self):
-        # The server checks the list too, not just the form on screen.
-        for month in ['2026-03', '2027-05']:
-            with self.subTest(month=month):
-                response = self.client.post(self.add_url, {'month': month, 'confirm': 'yes'})
-                self.assertContains(response, 'Select a valid choice')
-                self.assertFalse(ClosedMonth.objects.filter(month=month).exists())
-
-    def test_invalid_month_returns_to_form_without_confirmation(self):
-        response = self.client.post(self.add_url, {'month': '2026-13'})
-        self.assertNotContains(response, 'Yes, close it')
-        self.assertContains(response, 'Select a valid choice')
-
-    def test_already_closed_month_gets_friendly_error(self):
+    def test_reopen_happens_at_once(self):
         ClosedMonth.objects.create(month='2026-11')
-        # Checked on the first Save and again on confirm (e.g. closed in another tab meanwhile).
-        for data in [{'month': '2026-11'}, {'month': '2026-11', 'confirm': 'yes'}]:
-            with self.subTest(data=data):
-                response = self.client.post(self.add_url, data)
-                self.assertContains(response, 'That month is already closed.')
-        self.assertEqual(ClosedMonth.objects.count(), 1)
-
-    def test_reopen_action_deletes_selected_rows(self):
-        ClosedMonth.objects.create(month='2026-11')
-        ClosedMonth.objects.create(month='2026-12')
-        response = self.client.post(
-            self.list_url,
-            {'action': 'reopen_months', '_selected_action': ['2026-11']},
-            follow=True,
-        )
+        response = self.client.post(self.reopen_url('2026-11'), follow=True)
+        self.assertRedirects(response, self.list_url)
         self.assertContains(response, 'Reopened November 2026.')
-        self.assertEqual(list(ClosedMonth.objects.values_list('month', flat=True)), ['2026-12'])
+        self.assertFalse(ClosedMonth.objects.exists())
 
-    def test_list_shows_month_names_and_only_reopen_action(self):
+    def test_reopen_needs_a_post(self):
+        # A link (or a browser prefetching one) must never reopen a month.
         ClosedMonth.objects.create(month='2026-11')
-        response = self.client.get(self.list_url)
-        self.assertContains(response, 'November 2026')
-        self.assertContains(response, 'Reopen selected months')
-        self.assertNotContains(response, 'delete_selected')
+        with self.assertLogs('django.request', level='WARNING'):
+            response = self.client.get(self.reopen_url('2026-11'))
+        self.assertEqual(response.status_code, 405)
+        self.assertTrue(ClosedMonth.objects.exists())
 
-    def test_edit_and_delete_are_blocked(self):
+    def test_months_outside_the_window_are_refused(self):
+        # The server checks the month in the address, not just the buttons on screen.
+        for month in ['2026-03', '2027-05', 'junk']:
+            with self.subTest(month=month), self.assertLogs('django.request', level='WARNING'):
+                self.assertEqual(self.client.post(self.close_url(month)).status_code, 404)
+                self.assertEqual(self.client.post(self.reopen_url(month)).status_code, 404)
+        self.assertFalse(ClosedMonth.objects.exists())
+
+    def test_closing_twice_or_reopening_an_open_month_is_friendly(self):
+        # E.g. the same month handled in another tab meanwhile.
         ClosedMonth.objects.create(month='2026-11')
+        response = self.client.post(self.close_url('2026-11'), follow=True)
+        self.assertContains(response, 'November 2026 was already closed.')
+        self.assertEqual(ClosedMonth.objects.count(), 1)
+        response = self.client.post(self.reopen_url('2026-12'), follow=True)
+        self.assertContains(response, 'December 2026 was already open.')
+
+    def test_returns_to_next_but_never_off_site(self):
+        dashboard = f"{reverse('admin:index')}?month=2026-11"
+        response = self.client.post(self.close_url('2026-11'), {'next': dashboard})
+        self.assertRedirects(response, dashboard, fetch_redirect_response=False)
+        response = self.client.post(self.reopen_url('2026-11'), {'next': 'https://example.com/'})
+        self.assertRedirects(response, self.list_url, fetch_redirect_response=False)
+
+    def test_old_add_form_and_edit_and_delete_are_gone(self):
+        ClosedMonth.objects.create(month='2026-11')
+        add_url = reverse('admin:heritage_media_availability_closedmonth_add')
         change_url = reverse('admin:heritage_media_availability_closedmonth_change', args=['2026-11'])
         delete_url = reverse('admin:heritage_media_availability_closedmonth_delete', args=['2026-11'])
         with self.assertLogs('django.request', level='WARNING'):
+            self.assertEqual(self.client.post(add_url, {'month': '2026-12'}).status_code, 403)
             self.client.post(change_url, {'month': '2026-12'})
             self.client.post(delete_url, {'post': 'yes'})
         self.assertEqual(list(ClosedMonth.objects.values_list('month', flat=True)), ['2026-11'])
+        # No bulk actions (the old "Reopen selected months") on the page.
+        response = self.client.get(self.list_url)
+        self.assertNotContains(response, 'reopen_months')
+        self.assertNotContains(response, '_selected_action')
+
+    def test_closed_month_shows_closed_on_the_team_form(self):
+        # Under the hood a ClosedMonth row still means closed, so the team form
+        # labels it (TF-3) and rejects it (TF-4, covered by SubmitTests).
+        self.client.post(self.close_url('2026-11'))
+        response = Client().get(reverse('heritage_media_availability:team_form'))
+        self.assertContains(response, 'November 2026 (closed)')
+
+
+class DashboardCloseTests(TestCase):
+    """AD-8 (#43): the dashboard's Open/Closed badge and Close month / Reopen month button."""
+
+    def setUp(self):
+        self.enterContext(at_utc(2026, 10, 10, 16, 0))
+        self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
+
+    def status(self, month):
+        """The month row's status area (badge and button) on the dashboard for `month`."""
+        response = self.client.get(reverse('admin:index'), {'month': month})
+        return re.search(r'(?s)id="month-status">(.*?)</div>', response.content.decode()).group(1)
+
+    def test_open_month_has_close_button_coming_back_here(self):
+        status = self.status('2026-11')
+        self.assertIn('Open', status)
+        self.assertIn('Close month', status)
+        close_url = reverse('admin:heritage_media_availability_closedmonth_close', args=['2026-11'])
+        self.assertIn(f'action="{close_url}"', status)
+        self.assertIn('name="next" value="/admin/?month=2026-11"', status)
+        # The badge is sized to match the button beside it.
+        self.assertIn('month-badge-large', status)
+
+    def test_closed_month_has_reopen_button(self):
+        ClosedMonth.objects.create(month='2026-11')
+        status = self.status('2026-11')
+        self.assertIn('Closed', status)
+        self.assertIn('Reopen month', status)
+        self.assertIn('name="next" value="/admin/?month=2026-11"', status)
+
+    def test_months_older_than_6_back_get_the_badge_only(self):
+        ClosedMonth.objects.create(month='2026-03')
+        status = self.status('2026-03')
+        self.assertIn('Closed', status)
+        self.assertNotIn('Reopen', status)
+
+    def test_closing_from_the_dashboard_comes_back_with_a_message(self):
+        dashboard = f"{reverse('admin:index')}?month=2026-11"
+        close_url = reverse('admin:heritage_media_availability_closedmonth_close', args=['2026-11'])
+        response = self.client.post(close_url, {'next': dashboard}, follow=True)
+        self.assertContains(response, 'Closed November 2026.')
+        self.assertContains(response, 'Availability for November 2026')
+        self.assertIn('Reopen month', self.status('2026-11'))
 
 
 class ClosedMonthHistoryTests(TestCase):
     """#16: closing and reopening months are recorded in admin History."""
 
     def setUp(self):
+        self.enterContext(at_utc(2026, 10, 10, 16, 0))
         self.admin_user = get_user_model().objects.create_superuser('skye', password='test-pass-123')
         self.client.force_login(self.admin_user)
-        self.add_url = reverse('admin:heritage_media_availability_closedmonth_add')
-        self.list_url = reverse('admin:heritage_media_availability_closedmonth_changelist')
 
     def close(self, month):
-        """Close a month through the admin, including the confirmation step."""
-        self.client.post(self.add_url, {'month': month, 'confirm': 'yes'})
+        """Close a month with its Close button."""
+        self.client.post(reverse('admin:heritage_media_availability_closedmonth_close', args=[month]))
 
-    def reopen(self, *months):
-        """Reopen months with the "Reopen selected months" action."""
-        self.client.post(self.list_url, {'action': 'reopen_months', '_selected_action': list(months)})
+    def reopen(self, month):
+        """Reopen a month with its Reopen button."""
+        self.client.post(reverse('admin:heritage_media_availability_closedmonth_reopen', args=[month]))
 
     def entries(self, month):
         """(action, description, user) for each History entry for a month, oldest first."""
@@ -937,13 +1021,19 @@ class ClosedMonthHistoryTests(TestCase):
         self.close('2026-11')
         self.assertEqual(self.entries('2026-11'), [self.CLOSED])
 
-    def test_reopening_is_recorded_for_each_month(self):
+    def test_reopening_is_recorded(self):
         self.close('2026-11')
-        self.close('2026-12')
-        self.reopen('2026-11', '2026-12')
+        self.reopen('2026-11')
         self.assertEqual(self.entries('2026-11'), [self.CLOSED, self.REOPENED])
-        self.assertEqual(self.entries('2026-12'), [self.CLOSED, self.REOPENED])
         self.assertEqual(LogEntry.objects.get(object_id='2026-11', action_flag=DELETION).object_repr, 'November 2026')
+
+    def test_doing_nothing_records_nothing(self):
+        # Closing a closed month or reopening an open one adds no History entry.
+        self.close('2026-11')
+        self.close('2026-11')
+        self.reopen('2026-12')
+        self.assertEqual(self.entries('2026-11'), [self.CLOSED])
+        self.assertEqual(self.entries('2026-12'), [])
 
     def test_reclosed_month_history_shows_the_whole_timeline(self):
         self.close('2026-11')
