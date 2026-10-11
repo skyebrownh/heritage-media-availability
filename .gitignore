@@ -16,3 +16,7 @@ staticfiles/
 
 # Output of `bin/tailwindcss`: the standalone Tailwind CLI, downloaded per machine (#33)
 bin/
+
+# A copy of production's data, made to refresh staging (#45). Real names and
+# availability: never commit it, and delete it after loading.
+production-snapshot.json

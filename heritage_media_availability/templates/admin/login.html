@@ -1,0 +1,18 @@
+{% extends "admin/login.html" %}
+
+{% comment %}
+  The admin login page: Unfold's own, plus a warning on the staging site (#45).
+
+  Same file name as Unfold's login page, which it extends: our app comes
+  before Unfold in INSTALLED_APPS, so Django finds this file first, and
+  {% extends %} carries on to Unfold's copy. The login page has no header,
+  so Unfold's "Test site" label (UNFOLD["ENVIRONMENT"]) doesn't show here;
+  this warning, in Unfold's own warning style, takes its place.
+{% endcomment %}
+
+{% block login_before %}
+  {{ block.super }}
+  {% if is_staging %}
+    {% include "unfold/helpers/messages/warning.html" with message="Test site. This is the staging copy of the admin, not the real one." %}
+  {% endif %}
+{% endblock %}

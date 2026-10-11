@@ -180,3 +180,19 @@ Deploying: pushing/merging to `main` deploys on Railway. `railway.json` (JSON, s
 - start with `migrate --check` (fails the deploy if any migration wasn't applied), then `collectstatic`, then `gunicorn config.wsgi` (gunicorn options live in `gunicorn.conf.py`).
 - The pre-deploy command is also set in the Railway dashboard (Settings → Deploy → Pre-deploy Command), because the first deploy didn't pick it up from `railway.json`.
 - `railway.json` stops being read on 2026-12-01; the migration is tracked as a Post-launch issue.
+
+### Staging (#45)
+
+A second copy of the app on Railway, the `staging` environment, with its own Postgres and address (`https://heritage-media-availability-staging.up.railway.app`). Testers use it so nothing they enter touches real data.
+
+- It deploys automatically from `main`, like production, so it always runs the live code. There's no staging branch, and PRs still only target `main`.
+- Its variables are set in Railway (its own `SECRET_KEY`, `DEBUG=false`, `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` for its address, its own `DATABASE_URL`), plus `STAGING=true`, which shows a "Test site" banner on every page and lets `seed` and `load_snapshot` run there.
+- Every Railway command for staging names it with `--environment staging`. Without it, the CLI uses the linked environment, which is production.
+- Create its admin login: `railway ssh --environment staging`, then `python manage.py createsuperuser`, then `exit`.
+- Reset it to a test scenario: `railway ssh --environment staging -- python manage.py seed <scenario> --no-input`
+- Refresh it with a copy of production's data (members, submissions, closed months only; not logins or History):
+  1. `railway ssh --environment production -- python manage.py dumpdata heritage_media_availability.member heritage_media_availability.submission heritage_media_availability.closedmonth > production-snapshot.json` (read-only; the file is git-ignored)
+  2. `railway ssh --environment staging -- python manage.py load_snapshot - --no-input < production-snapshot.json`
+  3. `rm production-snapshot.json` (it holds real names and availability)
+- `seed` and `load_snapshot` only run where `staging.unsafe_reason()` allows: staging (`STAGING=true` and every `ALLOWED_HOSTS` entry contains "staging") or local development. Never production.
+- Not set up (decided 2026-10-11): previewing a branch on staging before merging. A possible future option is `railway up --environment staging`, which uploads the local folder to staging; a long-lived `staging` branch may be reconsidered with a workflow change instead.

@@ -20,6 +20,22 @@
   <link rel="stylesheet" href="{% static 'heritage_media_availability/app.css' %}">
 </head>
 <body class="min-h-screen bg-neutral-50 text-base text-neutral-900 antialiased">
+  {% if is_staging %}
+    {% comment %}
+      #45: on the staging site only, a strip across the top so testers never
+      mistake it for the real form. Adapted from Tailwind Plus's "alert with
+      accent border" (Feedback > Alerts). role="note": always-there
+      information, not something that just happened.
+    {% endcomment %}
+    <div class="border-b-4 border-yellow-400 bg-yellow-50" role="note">
+      <div class="mx-auto flex max-w-md gap-3 px-4 py-3">
+        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="size-5 shrink-0 text-yellow-400">
+          <path d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 5Zm0 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd" fill-rule="evenodd" />
+        </svg>
+        <p class="text-base text-yellow-700 sm:text-sm"><strong class="font-semibold">Test site.</strong> Anything entered here is only for testing and may be erased.</p>
+      </div>
+    </div>
+  {% endif %}
   {# One centered column: full width on phones, capped on larger screens. #}
   <main class="mx-auto max-w-md px-4 py-8 sm:py-12">
     {% block content %}{% endblock %}
