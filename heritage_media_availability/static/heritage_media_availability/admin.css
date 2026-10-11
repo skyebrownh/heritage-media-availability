@@ -69,11 +69,12 @@
   align-items: center;
   gap: 0.75rem;
 }
-/* The badge, sized to match the button beside it: Unfold's default button
+/* The badge, sized to match the button beside it (status_badge(large=True)
+   in admin.py). Unfold's default button
    is 0.5rem by 0.75rem of padding plus a 1px border around 20px-high text.
    Plain CSS overrides Unfold's smaller badge sizes (h-6 px-2) because
    Unfold's utilities sit in a CSS layer, which unlayered rules beat. */
-.month-badge-large {
+.badge-large {
   height: auto;
   padding: 0.5rem 0.75rem;
   border: 1px solid transparent;
@@ -175,40 +176,41 @@
 }
 
 /* ---------------------------------------------------------------------------
-   The Months page (#43), templates/admin/.../closedmonth/months.html.
-   It reuses .dashboard for the space between its sections.
+   Lists with one-click buttons: the Months page (#43) and the roster (#42).
+   The Months page reuses .dashboard for the space between its sections.
    ------------------------------------------------------------------------ */
 
-/* Each month's name links to its dashboard. The text keeps the table's
-   normal color (Skye's call), with a small right arrow after it to show
-   it's a link. On hover the name and arrow both turn the accent color,
-   with no underline. */
-.months-link {
+/* A row's main link (a month's dashboard, a member's edit page; row_link()
+   in admin.py). The text keeps the table's normal color (Skye's call),
+   with a small right arrow after it to show it's a link. On hover the
+   name and arrow both turn the accent color, with no underline. */
+.row-link {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
   font-weight: 600;
   color: var(--color-font-important-light);
 }
-.months-link .material-symbols-outlined {
+.row-link .material-symbols-outlined {
   font-size: 1rem;
 }
-.months-link:hover {
+.row-link:hover {
   color: var(--color-primary-600);
 }
 
-/* Reopen: Unfold's borderless "ghost" button, in the accent color so it
-   reads as a quiet action rather than another gray badge. On hover, a
+/* The quieter of two opposite buttons (Reopen, Activate; action_button()
+   in admin.py): Unfold's borderless "ghost" button in the accent color, so
+   it reads as a quiet action rather than another gray badge. On hover, a
    faint indigo wash instead of Unfold's gray, which matched the row hover. */
-.month-reopen {
+.quiet-action {
   color: var(--color-primary-600);
 }
-.month-reopen:hover {
+.quiet-action:hover {
   background-color: var(--color-primary-50);
 }
 
-/* Close and Reopen are small forms; keep them from adding space in the row. */
-.month-action {
+/* A standalone one-click button's form; keep it from adding space in the row. */
+.action-form {
   margin: 0;
 }
 

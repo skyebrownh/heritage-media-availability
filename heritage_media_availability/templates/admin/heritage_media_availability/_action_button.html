@@ -1,0 +1,21 @@
+{% load unfold %}
+{% comment %}
+  A one-click button that acts at once (admin.action_button()): Close and
+  Reopen on the Months page and dashboard (#43), Deactivate and Activate
+  on the roster (#42). It POSTs, never a plain link, so a browser
+  prefetching links can't trigger it.
+
+  hidden_label is read only by screen readers (e.g. " November 2026"),
+  since a column of buttons that all say "Close" wouldn't tell them apart.
+{% endcomment %}
+{% if in_list_form %}
+  {# Inside Django's list table, which is already one big form (and forms can't nest): borrow it, sending it to this button's address instead (formaction). It holds the CSRF token already. #}
+  {% component "unfold/components/button.html" with submit=1 variant=variant icon=icon class=button_class extra_attrs=formaction_attrs %}{{ label }}<span class="sr-only">{{ hidden_label }}</span>{% endcomponent %}
+{% else %}
+  {# A small form of its own, with Django's CSRF token and the page to come back to. #}
+  <form method="post" action="{{ url }}" class="action-form">
+    {% csrf_token %}
+    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+    {% component "unfold/components/button.html" with submit=1 variant=variant icon=icon class=button_class %}{{ label }}<span class="sr-only">{{ hidden_label }}</span>{% endcomponent %}
+  </form>
+{% endif %}

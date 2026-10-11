@@ -6,8 +6,9 @@ Django admin setup: the screens Skye uses behind the admin login (AD-1).
 - Submissions: a read-only history of everything the team has submitted
 
 Django builds the add/edit/list pages for us from the models; this file
-chooses which columns, filters and actions appear. The one custom screen is
-the Months page, with its Close and Reopen buttons. The screens are styled by
+chooses which columns, filters and actions appear. The custom pieces are
+one-click buttons that act at once: Deactivate / Activate on the
+roster (#42), and Close / Reopen on the Months page (#43). The screens are styled by
 django-unfold (#39): each admin class extends Unfold's ModelAdmin, and the
 site's name, colors and sidebar are in UNFOLD in config/settings.py.
 """
@@ -15,16 +16,17 @@ site's name, colors and sidebar are in UNFOLD in config/settings.py.
 from urllib.parse import urlencode
 
 from django.contrib import admin, messages
-from django.contrib.admin.models import DELETION, LogEntry
+from django.contrib.admin.models import CHANGE, DELETION, LogEntry
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpResponseNotAllowed
-from django.shortcuts import redirect
+from django.shortcuts import get_object_or_404, redirect
 from django.template.loader import render_to_string
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.utils.html import format_html
 from django.utils.http import url_has_allowed_host_and_scheme
 from unfold.admin import ModelAdmin
+from unfold.contrib.filters.admin import DropdownFilter
 from unfold.widgets import SELECT_CLASSES, UnfoldAdminSelect2Widget
 
 from .dashboard import month_responses
@@ -32,20 +34,207 @@ from .models import ClosedMonth, Member, Submission
 from .months import month_label, shift_month, upcoming_months
 
 
+# ---------------------------------------------------------------------------
+# Shared pieces for the roster and Months pages: badges, name links, and
+# one-click buttons that act at once and come back to the same page.
+# ---------------------------------------------------------------------------
+
+def status_badge(text, variant=None, large=False):
+    """
+    Unfold's badge: green for variant="success", gray with no variant.
+    Used for Open/Closed months (AD-8) and Active/Inactive members (AD-2).
+
+    large=True gives it the same height as a button beside it (the
+    dashboard's month row; .badge-large in admin.css), so the pair lines up.
+    """
+    context = {'text': text}
+    if variant:
+        context['variant'] = variant
+    if large:
+        context['class'] = 'badge-large'
+    return render_to_string('unfold/helpers/label.html', context)
+
+
+def row_link(url, text):
+    """
+    A list's main link (a month's dashboard, a member's edit page): the
+    table's normal text with a small right arrow, so it reads as a link
+    without the whole column turning indigo (.row-link in admin.css).
+    The arrow is decorative, so screen readers skip it.
+    """
+    return format_html(
+        '<a class="row-link" href="{}">{}'
+        '<span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></a>',
+        url, text,
+    )
+
+
+def action_button(request, url, label, icon, next_url=None, hidden_label='', quiet=False, in_list_form=False):
+    """
+    A one-click button that POSTs to `url` and then returns to next_url
+    (or, without one, to the page it was on; see safe_next_url).
+
+    POST, never a link, so a browser prefetching links can't trigger it.
+    Two looks, so opposite actions are told apart at a glance (Skye's call,
+    2026-10-10): the main action (Close, Make inactive) is Unfold's white
+    outline button; the quieter undo (Reopen, Activate) is its borderless
+    "ghost" button in indigo (.quiet-action). hidden_label is read only by
+    screen readers, e.g. "Close" + " November 2026", since a table of
+    identical "Close" buttons wouldn't tell them apart.
+
+    in_list_form=True is for buttons inside Django's list table, which is
+    already one big form (for bulk actions), and HTML can't nest forms.
+    The button then borrows that form, sending it to `url` instead
+    (formaction); the form already holds the CSRF token, so no request is
+    needed (pass None).
+    """
+    return render_to_string(
+        'admin/heritage_media_availability/_action_button.html',
+        {
+            'url': url,
+            'label': label,
+            'hidden_label': hidden_label,
+            'icon': icon,
+            'variant': 'ghost' if quiet else 'default',
+            'button_class': 'quiet-action' if quiet else '',
+            'next': next_url,
+            'in_list_form': in_list_form,
+            'formaction_attrs': format_html('formaction="{}" formmethod="post"', url),
+        },
+        request=request,  # so {% csrf_token %} works in the standalone form
+    )
+
+
+def safe_next_url(request, default):
+    """
+    Where a button returns to afterwards: the page it was on.
+
+    That's its "next" field if it sent one, or else the page the browser
+    says it came from (the Referer header, which browsers send for pages on
+    the same site), so the roster comes back with its filter and search.
+    Only addresses on this site are followed, so a link can't use our pages
+    to send Skye somewhere else; anything else goes to `default`.
+    """
+    for url in [request.POST.get('next'), request.GET.get('next'), request.headers.get('referer')]:
+        if url and url_has_allowed_host_and_scheme(url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+            return url
+    return default
+
+
+class StatusFilter(admin.SimpleListFilter):
+    """
+    #42: All / Active (7) / Inactive (2), as one-click tabs beside the
+    roster's search box (shown there by list_filter_options), drawn like
+    the Unfold demo's filter tabs (filters/segmented.html). Django's own
+    Yes/No filter would read "Is active: Yes", so this one uses plain words.
+    """
+
+    title = 'status'
+    parameter_name = 'status'
+    template = 'admin/heritage_media_availability/filters/segmented.html'
+
+    def lookups(self, request, model_admin):
+        """The options after "All" (which Django adds first), with how many people each has."""
+        active = Member.objects.filter(is_active=True).count()
+        inactive = Member.objects.filter(is_active=False).count()
+        return [('active', f'Active ({active})'), ('inactive', f'Inactive ({inactive})')]
+
+    def queryset(self, request, queryset):
+        """Narrow the roster to the chosen status; "All" leaves it alone."""
+        if self.value() == 'active':
+            return queryset.filter(is_active=True)
+        if self.value() == 'inactive':
+            return queryset.filter(is_active=False)
+        return queryset
+
+
 @admin.register(Member)
 class MemberAdmin(ModelAdmin):
-    """Roster screen: add people, fix names, and switch them active or inactive."""
+    """
+    Roster screen (AD-2): add people, fix names, and switch them active or
+    inactive with one click (#42). The edit page's Active checkbox still
+    works too, with its Save button.
+    """
 
-    list_display = ['first_name', 'last_name', 'is_active', 'created_at']
-    # Clicking a name opens that person's edit page.
-    list_display_links = ['first_name', 'last_name']
-    # AD-2: tick or untick "active" right in the list, then press Save,
-    # without opening each person's page.
-    list_editable = ['is_active']
-    list_filter = ['is_active']
+    list_display = ['name', 'status', 'created_at', 'action']
+    # The Name column is the link to the edit page (row_link), so Django
+    # doesn't add its own link to the first column as well.
+    list_display_links = None
+    list_filter = [StatusFilter]
+    # #42: shown beside the search box rather than in the Filters panel.
+    list_filter_options = {'status': {'horizontal': True}}
     search_fields = ['first_name', 'last_name']
     # The edit page only needs the fields Skye can change; created_at is automatic.
     fields = ['first_name', 'last_name', 'is_active']
+
+    @admin.display(description='Name', ordering='first_name')
+    def name(self, member):
+        """
+        "Grace Kim", linking to the edit page. Sorting by this column sorts
+        by first name; Member's default order breaks ties by last name.
+        """
+        url = reverse('admin:heritage_media_availability_member_change', args=[member.pk])
+        return row_link(url, str(member))
+
+    @admin.display(description='Status', ordering='is_active')
+    def status(self, member):
+        """AD-2: Active (green) or Inactive (gray)."""
+        return status_badge('Active', 'success') if member.is_active else status_badge('Inactive')
+
+    @admin.display(description='Action')
+    def action(self, member):
+        """
+        #42: Deactivate / Activate, applied at once. Returns to the
+        same list afterwards (the page it came from), keeping its filter,
+        search and sorting.
+        """
+        url = reverse('admin:heritage_media_availability_member_toggle_active', args=[member.pk])
+        # Short verbs that match the Active/Inactive badges, with an X or a
+        # check mark (Skye's call, 2026-10-10).
+        if member.is_active:
+            label, icon, quiet = 'Deactivate', 'close', False
+        else:
+            label, icon, quiet = 'Activate', 'check', True
+        return action_button(None, url, label, icon, hidden_label=f' {member}', quiet=quiet, in_list_form=True)
+
+    def get_urls(self):
+        """
+        Add the one-click toggle, e.g. .../member/7/toggle-active/. It goes
+        before Django's own URLs, which would otherwise read "7/toggle-active"
+        as a record ID; admin_view() puts it behind the admin login.
+        """
+        toggle = path(
+            '<int:member_id>/toggle-active/',
+            self.admin_site.admin_view(self.toggle_active_view),
+            name='heritage_media_availability_member_toggle_active',
+        )
+        return [toggle] + super().get_urls()
+
+    def toggle_active_view(self, request, member_id):
+        """
+        AD-2 (#42): switch a member active or inactive straight away.
+
+        POST only. Recorded in the member's History (#16) as "Marked
+        inactive." or "Marked active.", then back to the roster with
+        "Grace Kim is now inactive."
+        """
+        if request.method != 'POST':
+            return HttpResponseNotAllowed(['POST'])
+        if not self.has_change_permission(request):
+            raise PermissionDenied
+        member = get_object_or_404(Member, pk=member_id)
+        member.is_active = not member.is_active
+        member.save(update_fields=['is_active'])
+        state = 'active' if member.is_active else 'inactive'
+        LogEntry.objects.log_actions(
+            user_id=request.user.pk,
+            queryset=[member],
+            action_flag=CHANGE,
+            change_message=f'Marked {state}.',
+            single_object=True,
+        )
+        self.message_user(request, f'{member} is now {state}.', messages.SUCCESS)
+        return redirect(safe_next_url(request, reverse('admin:heritage_media_availability_member_changelist')))
 
     def has_delete_permission(self, request, obj=None):
         """
@@ -103,47 +292,30 @@ def closable_months():
 
 
 def month_status_label(closed, large=False):
-    """
-    AD-8: Unfold's badge for a month: Open (green) or Closed (gray).
-
-    large=True gives it the same height as the button beside it on the
-    dashboard (.month-badge-large in admin.css), so the pair lines up.
-    """
-    context = {'text': 'Closed'} if closed else {'text': 'Open', 'variant': 'success'}
-    if large:
-        context['class'] = 'month-badge-large'
-    return render_to_string('unfold/helpers/label.html', context)
+    """AD-8: a month's badge: Open (green) or Closed (gray)."""
+    return status_badge('Closed', large=large) if closed else status_badge('Open', 'success', large=large)
 
 
 def month_action(request, month, closed, next_url, short=False):
     """
-    AD-8: the Close or Reopen button for one month (#43).
-
-    Both are small forms that post straight away, with no confirmation:
-    each is undone with one click of the other (Skye's call, 2026-10-10).
-    next_url is where to come back to afterwards (the dashboard or the
-    Months page). short=True says "Close"/"Reopen" for the Months table,
-    where the row already names the month; the dashboard says "Close month".
+    AD-8: the Close or Reopen button for one month (#43), acting at once
+    with no confirmation: each is undone with one click of the other
+    (Skye's call, 2026-10-10). Close is the main action (lock icon);
+    Reopen is the quieter one (circular arrow). next_url is where to come
+    back to (the dashboard or the Months page). short=True says
+    "Close"/"Reopen" for the Months table, where the row already names the
+    month; the dashboard says "Close month".
     """
     action = 'reopen' if closed else 'close'
-    return render_to_string(
-        'admin/heritage_media_availability/closedmonth/_month_action.html',
-        {
-            'action_url': reverse(f'admin:heritage_media_availability_closedmonth_{action}', args=[month]),
-            'verb': 'Reopen' if closed else 'Close',
-            'verb_suffix': '' if short else ' month',
-            # Told apart at a glance (Skye's call, 2026-10-10): Close is
-            # Unfold's white outline button with a padlock; Reopen is quieter,
-            # its borderless "ghost" button in indigo (.month-reopen in
-            # admin.css) with a circular arrow. A gray fill was too close to
-            # the gray Closed badge and the table's row hover.
-            'icon': 'replay' if closed else 'lock',
-            'variant': 'ghost' if closed else 'default',
-            'button_class': 'month-reopen' if closed else '',
-            'next': next_url,
-            'month_label': month_label(month),
-        },
-        request=request,  # so {% csrf_token %} works in the form
+    verb = 'Reopen' if closed else 'Close'
+    return action_button(
+        request,
+        reverse(f'admin:heritage_media_availability_closedmonth_{action}', args=[month]),
+        verb if short else f'{verb} month',
+        'replay' if closed else 'lock',
+        next_url,
+        hidden_label=f' {month_label(month)}',
+        quiet=closed,
     )
 
 
@@ -211,13 +383,8 @@ class ClosedMonthAdmin(ModelAdmin):
             for month in months:
                 responses = month_responses(month)
                 rows.append([
-                    # The month's name links to its dashboard; the small right
-                    # arrow (decorative, so hidden from screen readers) shows it's a link.
-                    format_html(
-                        '<a class="months-link" href="{}?{}">{}'
-                        '<span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></a>',
-                        reverse('admin:index'), urlencode({'month': month}), month_label(month),
-                    ),
+                    # The month's name links to its dashboard.
+                    row_link(f"{reverse('admin:index')}?{urlencode({'month': month})}", month_label(month)),
                     month_status_label(month in closed),
                     # "5 of 6" (the column header says Responses); a dash before anyone was on the team.
                     f'{responses.responded_count} of {responses.total}' if responses.total else '–',
@@ -248,16 +415,8 @@ class ClosedMonthAdmin(ModelAdmin):
             raise PermissionDenied
 
     def next_url(self, request):
-        """
-        Where to go after closing or reopening: the page the button was on.
-
-        Only addresses on this site are followed, so a link can't use the
-        page to send Skye somewhere else; anything else goes to the Months page.
-        """
-        url = request.POST.get('next') or request.GET.get('next')
-        if url and url_has_allowed_host_and_scheme(url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
-            return url
-        return reverse('admin:heritage_media_availability_closedmonth_changelist')
+        """Back to the page the button was on, or the Months page."""
+        return safe_next_url(request, reverse('admin:heritage_media_availability_closedmonth_changelist'))
 
     def close_view(self, request, month):
         """
@@ -308,6 +467,28 @@ class ClosedMonthAdmin(ModelAdmin):
         return redirect(self.next_url(request))
 
 
+class MonthFilter(DropdownFilter):
+    """
+    #42: pick one month's submissions from a dropdown beside the search
+    box (shown there by list_filter_options), newest month first. A
+    dropdown rather than buttons because the list of months keeps growing.
+    """
+
+    title = 'month'
+    parameter_name = 'month'
+
+    def lookups(self, request, model_admin):
+        """Every month anyone has submitted for, as ("2026-11", "November 2026")."""
+        months = Submission.objects.order_by('-month').values_list('month', flat=True).distinct()
+        return [(month, month_label(month)) for month in months]
+
+    def queryset(self, request, queryset):
+        """Only the chosen month's submissions; "All" leaves the list alone."""
+        if self.value():
+            return queryset.filter(month=self.value())
+        return queryset
+
+
 @admin.register(Submission)
 class SubmissionAdmin(ModelAdmin):
     """
@@ -319,7 +500,10 @@ class SubmissionAdmin(ModelAdmin):
     """
 
     list_display = ['member', 'month_name', 'kind', 'day_list', 'submitted_at']
-    list_filter = ['month', 'kind', 'member']
+    list_filter = [MonthFilter, 'kind', 'member']
+    # #42: the month dropdown sits beside the search box; kind and member
+    # stay in the Filters panel.
+    list_filter_options = {'month': {'horizontal': True}}
     search_fields = ['member__first_name', 'member__last_name']
     # Fetch each row's member in the same query instead of one query per row.
     list_select_related = ['member']

@@ -1,0 +1,17 @@
+{% comment %}
+  #42: a filter drawn as a row of one-click tabs ("All", "Active (7)",
+  "Inactive (2)"), like the Unfold demo, instead of radio buttons. Used by
+  the roster's StatusFilter (admin.py), beside the search box.
+
+  Each option is a plain link to the list with that filter applied; Django
+  works out each link (choice.query_string), keeping any search or sorting.
+  The classes are copied from Unfold's own tab bar
+  (unfold/helpers/tab_items.html), so its stylesheet already has them:
+  a light gray strip, with the chosen option on a white "raised" tab.
+{% endcomment %}
+<nav class="bg-base-100 flex flex-row font-medium gap-1 p-1 rounded-default text-important md:w-auto *:flex *:flex-row *:gap-1 *:font-medium *:whitespace-nowrap *:items-center *:px-2.5 *:py-[5px] *:rounded-default *:hover:bg-base-700/[.06] dark:bg-white/[.06] *:dark:hover:bg-white/[.06] [&>.active]:bg-white [&>.active]:shadow-xs [&>.active]:dark:bg-base-700 [&>.active]:hover:bg-white [&>.active]:dark:hover:bg-base-700" aria-label="Filter by {{ title }}">
+  {% for choice in choices %}
+    {# aria-current tells screen readers which option is showing. #}
+    <a href="{{ choice.query_string|iriencode }}"{% if choice.selected %} class="active" aria-current="true"{% endif %}>{{ choice.display }}</a>
+  {% endfor %}
+</nav>
