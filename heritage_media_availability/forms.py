@@ -13,19 +13,36 @@ from django.core.exceptions import ValidationError
 from .models import ClosedMonth, Member, Submission
 from .months import month_label, month_weeks, upcoming_months
 
-# Shared look for the dropdowns: full width, at least 44px tall (tap target),
-# 16px text (also stops iPhones zooming in when a field is tapped), and a
-# clear pastel-blue ring when focused with a keyboard or finger.
+# #41: the dropdowns' look, from Tailwind Plus's "simple native" select menu.
+# appearance-none hides the browser's own arrow; the template draws the
+# block's chevron on top instead (pr-8 leaves room for it), and the phone's
+# native picker still opens on tap. 16px text at every width (text-base,
+# decision 2026-10-12, instead of the block's 14px from 640px up); it also
+# stops iPhones zooming in when a field is tapped, so it's set here on the
+# field itself rather than left to the page's size. Focus draws an indigo
+# outline. Two additions to the block:
+# - has-[...]: while the empty "Choose..." option is the chosen one, the text
+#   is gray-500, so the placeholder looks lighter than a real choice (gray-500
+#   is the lightest gray with AA contrast on white). *:text-gray-900 keeps
+#   the options in the open list dark, since some browsers copy the select's
+#   color onto them.
+# - *:data-closed: closed months (MonthSelect's data-closed) are gray in the
+#   open list where the browser allows it (desktop Chrome and Firefox; phone
+#   pickers ignore option colors). Their "(closed)" text says it either way.
 SELECT_CLASSES = (
-    'block w-full min-h-11 rounded-xl border border-neutral-300 bg-white px-3 py-2 text-base '
-    'focus:border-accent-500 focus:outline-none focus:ring-4 focus:ring-accent-200'
+    'col-start-1 row-start-1 w-full appearance-none rounded-md bg-white py-1.5 pr-8 pl-3 '
+    'text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 '
+    'focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 '
+    "has-[option[value='']:checked]:text-gray-500 *:text-gray-900 *:data-closed:text-gray-500"
 )
 
 
-# Same look for the notes box, just taller.
+# #41: the notes box, from Tailwind Plus's "simple" textarea, with the same
+# outline, indigo focus and 16px text as the dropdowns.
 TEXTAREA_CLASSES = (
-    'block w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-base '
-    'focus:border-accent-500 focus:outline-none focus:ring-4 focus:ring-accent-200'
+    'block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 '
+    'outline-1 -outline-offset-1 outline-gray-300 '
+    'focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600'
 )
 
 

@@ -3,8 +3,19 @@
   the server when a stale form's submit is rejected, and copied in by the
   page script when a closed month is picked. One snippet keeps them identical.
   The hint line gives people a way forward instead of a dead end.
+  #41: adapted from Tailwind Plus's yellow "alert with description"
+  (Feedback > Alerts): a warning, since the form can't be used for this month.
 {% endcomment %}
-<div class="rounded-xl bg-accent-50 p-4 text-accent-700 ring-1 ring-accent-200">
-  <p class="font-medium">{{ closed_month_message }}</p>
-  <p class="mt-1">You can choose a different month above.</p>
+<div class="rounded-md bg-yellow-50 p-4">
+  <div class="flex">
+    <div class="shrink-0">
+      <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="size-5 text-yellow-400">
+        <path d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 5Zm0 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd" fill-rule="evenodd" />
+      </svg>
+    </div>
+    <div class="ml-3">
+      <p class="font-medium text-yellow-800">{{ closed_month_message }}</p>
+      <p class="mt-2 text-yellow-700">You can choose a different month above.</p>
+    </div>
+  </div>
 </div>

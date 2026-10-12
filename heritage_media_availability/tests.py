@@ -5,6 +5,7 @@ Run them with:  uv run --env-file .env python manage.py test
 Django creates a separate throwaway test database, so your real data is safe.
 """
 
+import html as html_lib
 import json
 import os
 import runpy
@@ -367,7 +368,7 @@ class LastSubmissionLookupTests(TestCase):
             'kind': 'days',
             'days': [3, 4, 5, 6, 7, 20],
             'notes': 'No rehearsal on the 11th',
-            'summary': 'Your last submission (10/02/26): Nov 3-7, 20. Submitting again replaces it.',
+            'summary': 'Nov 3-7, 20',
         })
 
     def test_only_the_one_member_and_month(self):
@@ -392,6 +393,10 @@ class LastSubmissionLookupTests(TestCase):
     def test_form_page_has_the_summary_box(self):
         response = self.client.get(reverse('heritage_media_availability:team_form'))
         self.assertContains(response, 'id="previous-summary" role="status"')
+        # #41: the box starts hidden, with a "Your last answer" label above the answer the script fills in.
+        html = response.content.decode()
+        self.assertRegex(html, r'id="previous-box"[^>]*hidden')
+        self.assertRegex(html, r'(?s)>Your last answer</p>\s*<p id="previous-answer"')
         self.assertContains(response, self.url)
         self.assertContains(response, 'data-bound="false"')
 
@@ -426,33 +431,22 @@ class FormattingTests(TestCase):
 
 
 class PreviousSummaryTests(TestCase):
-    """TF-9: wording of the earlier-submission summary."""
+    """TF-9: the answer shown in the "Your last answer" reminder."""
 
-    def summary(self, kind='days', days=(), when=datetime(2026, 10, 2, 16, 0, tzinfo=UTC)):
-        """The summary for an unsaved November submission made at `when`."""
+    def summary(self, kind='days', days=()):
+        """The summary for an unsaved November submission."""
         member = Member(first_name='Bob', last_name='Smith')
-        return previous_summary(Submission(member=member, month='2026-11', kind=kind, days=list(days), submitted_at=when))
+        return previous_summary(Submission(member=member, month='2026-11', kind=kind, days=list(days)))
 
     def test_days_name_the_month_once(self):
         self.assertEqual(days_list('2026-10', [3, 4, 5, 6, 7, 20]), 'Oct 3-7, 20')
         self.assertEqual(days_list('2026-10', [3, 4, 5, 6, 7, 10, 20]), 'Oct 3-7, 10, 20')
-        self.assertEqual(
-            self.summary(days=[3, 4, 5, 6, 7, 20]),
-            'Your last submission (10/02/26): Nov 3-7, 20. Submitting again replaces it.',
-        )
+        self.assertEqual(self.summary(days=[3, 4, 5, 6, 7, 20]), 'Nov 3-7, 20')
 
     def test_all_month_wording(self):
-        self.assertEqual(
-            self.summary('available_all'), 'Your last submission (10/02/26): available all month. Submitting again replaces it.'
-        )
-        self.assertEqual(
-            self.summary('unavailable_all'),
-            'Your last submission (10/02/26): unavailable all month. Submitting again replaces it.',
-        )
-
-    def test_date_is_in_eastern_time(self):
-        # 2 am UTC on Oct 3 is still 10 pm Oct 2 in New York.
-        self.assertIn('(10/02/26)', self.summary('available_all', when=datetime(2026, 10, 3, 2, 0, tzinfo=UTC)))
+        # On its own line, so capitalized (#41).
+        self.assertEqual(self.summary('available_all'), 'Available all month')
+        self.assertEqual(self.summary('unavailable_all'), 'Unavailable all month')
 
 
 class MonthWeeksTests(SimpleTestCase):
@@ -2211,25 +2205,73 @@ class PrebuiltCssTests(TestCase):
 
     def test_built_css_has_the_classes_pages_rely_on(self):
         # A cheap "did you forget to rebuild?" check: a page-layout class, the
-        # accent theme from tailwind/input.css, and the calendar's selected-day style.
+        # indigo button (#41), and the calendar's chosen-day circle.
         css = Path(finders.find(self.css_path)).read_text()
-        for selector in ('.max-w-md', '.text-accent-700', r'.peer-checked\:bg-accent-200'):
+        for selector in ('.max-w-md', '.bg-indigo-600', r'.group-has-checked\/day\:bg-indigo-600'):
             with self.subTest(selector=selector):
                 self.assertIn(selector, css)
 
-    def test_every_class_on_the_team_form_has_a_rule(self):
+    def team_pages(self):
+        """
+        The rendered HTML of every team-facing page, by name: the blank form,
+        a failed submit (error alert), the thanks page with a note, and the
+        "form expired" page. Used by the class checks below.
+        """
+        bob = Member.objects.create(first_name='Bob', last_name='Smith', standing_availability='3rd Sundays only')
+        with at_utc(2026, 10, 1, 12, 0):
+            form = self.client.get(self.url).content.decode()
+            failed = self.client.post(self.url, {'member': bob.pk, 'month': '', 'kind': 'days'}).content.decode()
+            thanks = self.client.post(
+                self.url,
+                {'member': bob.pk, 'month': '2026-11', 'kind': 'available_all', 'notes': 'Back by noon'},
+                follow=True,
+            ).content.decode()
+        expired = Client(enforce_csrf_checks=True).post(self.url, {}).content.decode()
+        self.assertIn('Almost there!', failed)  # sanity checks: each page is what it claims
+        self.assertIn('Thanks, Bob!', thanks)
+        self.assertIn('Your form expired.', expired)
+        return {'form': form, 'failed submit': failed, 'thanks': thanks, 'form expired': expired}
+
+    def test_every_class_on_the_team_pages_has_a_rule(self):
         # Regression (#33): the dropdown and notes classes come from forms.py,
         # not a template, and were left out of the build. Checking the rendered
-        # page catches a class from any source. Tailwind escapes : / . [ ] and '
-        # in its selectors, so the class names are escaped the same way.
-        Member.objects.create(first_name='Bob', last_name='Smith')
-        html = self.client.get(self.url).content.decode()
+        # pages catches a class from any source. Tailwind escapes every
+        # character that isn't a letter, digit, - or _ in its selectors
+        # (e.g. "sm:text-sm" becomes ".sm\:text-sm"), so the names are escaped the same way.
         css = Path(finders.find(self.css_path)).read_text()
-        classes = {name for attr in re.findall(r'class="([^"]*)"', html) for name in attr.split()}
-        self.assertIn('focus:border-accent-500', classes)  # sanity check: forms.py's classes were rendered
-        for name in sorted(classes):
-            with self.subTest(name=name):
-                self.assertIn('.' + re.sub(r"([:/.\[\]'])", r'\\\1', name), css)
+        for page, html in self.team_pages().items():
+            # Django writes ' in attributes as &#x27;, so turn those back into the real class names.
+            classes = {name for attr in re.findall(r'class="([^"]*)"', html) for name in html_lib.unescape(attr).split()}
+            if page == 'form':
+                self.assertIn('outline-gray-300', classes)  # sanity check: forms.py's classes were rendered
+            for name in sorted(classes):
+                with self.subTest(page=page, name=name):
+                    self.assertIn('.' + re.sub(r'([^\w-])', r'\\\1', name), css)
+
+    def test_pastel_accent_is_gone(self):
+        # #41: the team pages moved to Tailwind's indigo, and the old
+        # pastel "accent" theme was removed from tailwind/input.css.
+        css = Path(finders.find(self.css_path)).read_text()
+        self.assertNotIn('accent-', css)
+        for page, html in self.team_pages().items():
+            with self.subTest(page=page):
+                self.assertNotIn('accent-', html)
+
+    def test_text_stays_16px_on_wide_screens(self):
+        # Decision 2026-10-12: team pages are 16px at every width. Tailwind
+        # Plus blocks shrink text to 14px from 640px up (sm:text-sm), so this
+        # catches one pasted in unchanged.
+        for page, html in self.team_pages().items():
+            with self.subTest(page=page):
+                self.assertNotIn('sm:text-sm', html)
+                self.assertIn('<body class="min-h-screen bg-gray-100 text-base', html)
+
+    def test_placeholder_and_closed_months_are_gray(self):
+        # #41: a select showing its empty "Choose..." option is gray-500, and
+        # closed months in the open list are gray-500 where browsers allow it.
+        css = Path(finders.find(self.css_path)).read_text()
+        self.assertRegex(css, r'has\([^)]*option\[value=""\]:checked')
+        self.assertIn('>*)[data-closed]', css)
 
 
 class UnfoldAdminTests(TestCase):

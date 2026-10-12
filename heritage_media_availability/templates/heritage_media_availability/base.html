@@ -1,6 +1,6 @@
 {% comment %}
-  Shared layout for every team-facing page (the form now; the confirmation
-  page in #8). Pages fill in the "title" and "content" blocks.
+  Shared layout for every team-facing page (the form, the thanks page, and
+  the "form expired" page). Pages fill in the "title" and "content" blocks.
   Design rules (CLAUDE.md): mobile first at 375px, Tailwind Plus defaults.
 {% endcomment %}
 {% load static %}
@@ -13,13 +13,18 @@
   <title>{% block title %}Heritage Media Availability{% endblock %}</title>
   {% comment %}
     #33: pre-built Tailwind CSS, served by WhiteNoise. It's built from
-    tailwind/input.css (which also holds the accent colors) with the
-    standalone CLI, so phones download one small cached file instead of
+    tailwind/input.css with the standalone CLI, so phones download one small cached file instead of
     building styles in the browser.
   {% endcomment %}
   <link rel="stylesheet" href="{% static 'heritage_media_availability/app.css' %}">
 </head>
-<body class="min-h-screen bg-neutral-50 text-base text-neutral-900 antialiased">
+{% comment %}
+  #41: Tailwind Plus's gray page behind a white card. Text is 16px at every
+  width (decision 2026-10-12): Tailwind Plus drops to 14px from 640px up,
+  but that read too small on a laptop for this team. Everything on the
+  page inherits this size unless it sets its own.
+{% endcomment %}
+<body class="min-h-screen bg-gray-100 text-base text-gray-900 antialiased">
   {% if is_staging %}
     {% comment %}
       #45: on the staging site only, a strip across the top so testers never
@@ -32,7 +37,7 @@
         <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="size-5 shrink-0 text-yellow-400">
           <path d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 5Zm0 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd" fill-rule="evenodd" />
         </svg>
-        <p class="text-base text-yellow-700 sm:text-sm"><strong class="font-semibold">Test site.</strong> Anything entered here is only for testing and may be erased.</p>
+        <p class="text-yellow-700"><strong class="font-semibold">Test site.</strong> Anything entered here is only for testing and may be erased.</p>
       </div>
     </div>
   {% endif %}

@@ -153,7 +153,7 @@ Formats and routines for each step of the loop above. Recent issues and PRs (e.g
 ### Design rules
 
 - Mobile first: design at 375px wide, then scale up.
-- Follow Tailwind Plus defaults, with no exceptions: `text-base sm:text-sm` (16px on phones, 14px from 640px up), its control and button sizes, its gray palette, and its default indigo accent. Contrast meets WCAG AA.
+- Follow Tailwind Plus defaults, with one exception: team pages use `text-base` (16px) at every width, so drop the blocks' `sm:text-sm` and `sm:size-4` (decision 2026-10-12). The blue info boxes are smaller on purpose: a `text-xs` label, a 16px value, and a `text-sm` explanation. Otherwise use its control and button sizes, its gray palette, and its default indigo accent. Contrast meets WCAG AA.
 - Clean cards and generous white space, as in the Tailwind Plus blocks.
 - Plain, friendly wording (e.g. "Which days can't you serve?"). Many users are older and not comfortable with tech.
 - Every input has a label, and calendar days work with a keyboard and screen reader.

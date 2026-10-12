@@ -35,16 +35,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
-  The pastel blue accent, moved unchanged from base.html's old inline theme
-  so pages look the same as before. It adds classes like bg-accent-100 and
-  ring-accent-200. The 700 shade is dark enough for text on white; the
-  lighter shades are only for backgrounds and focus rings. SPEC.md now calls
-  for Tailwind's indigo; the switch happens in the restyling issues (#34-#36).
+  Colors (#41): the pages use Tailwind's own gray palette and default indigo
+  accent, the same values as the admin (SPEC.md design rules), so there's no
+  custom @theme here. The old pastel "accent" colors were removed.
 */
-@theme {
-  --color-accent-50: #f0f7ff;
-  --color-accent-100: #e0efff;
-  --color-accent-200: #c4e0fb;
-  --color-accent-500: #5b9fe0;
-  --color-accent-700: #2563a8;
-}
