@@ -137,7 +137,7 @@ def last_submission(request):
     that one member and month, never the history:
 
         {"found": true, "kind": "days", "days": [3, 4, 20], "notes": "...",
-         "summary": "Your last submission (10/02/26): Oct 3-4, 20. Submitting again replaces it."}
+         "summary": "Nov 3-4, 20"}
 
     or {"found": false}. Anyone with the link could look up any name, which
     matches v1's trusted-identity rule (SPEC.md business rules): the data is

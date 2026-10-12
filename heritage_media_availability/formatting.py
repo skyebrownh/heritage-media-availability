@@ -13,7 +13,6 @@ copy text (AD-7), and by_date_text() the by-date copy text.
 import calendar
 from collections import Counter
 
-from django.utils import timezone
 
 from .models import Submission
 from .months import split_month
@@ -131,23 +130,19 @@ def display_names(members):
 
 def previous_summary(submission):
     """
-    TF-9: the read-only reminder of someone's current submission for a month.
+    TF-9: someone's current answer for a month, for the team form's
+    "Your last answer" reminder: "Nov 3-7, 20", "Available all month" or
+    "Unavailable all month".
 
-    "Your last submission (10/02/26): Oct 3-7, 20. Submitting again replaces it."
-    "Your last submission (10/02/26): available all month. Submitting again replaces it."
-    The date is the day it was submitted, in Eastern time (settings.TIME_ZONE),
-    as MM/DD/YY so it doesn't read as part of the days that follow
-    ("(Oct 2): Oct 3-7" put two month names side by side).
+    It stands on its own line in large text (#41), so it starts with a
+    capital. No submission date: volunteers need what they said, not when
+    (decision 2026-10-12); the dashboard still shows Skye the time.
     """
-    when = timezone.localtime(submission.submitted_at).strftime('%m/%d/%y')
-
     if submission.kind == Submission.Kind.AVAILABLE_ALL:
-        what = 'available all month'
-    elif submission.kind == Submission.Kind.UNAVAILABLE_ALL:
-        what = 'unavailable all month'
-    else:
-        what = days_list(submission.month, submission.days)
-    return f'Your last submission ({when}): {what}. Submitting again replaces it.'
+        return 'Available all month'
+    if submission.kind == Submission.Kind.UNAVAILABLE_ALL:
+        return 'Unavailable all month'
+    return days_list(submission.month, submission.days)
 
 
 def answer_text(submission):

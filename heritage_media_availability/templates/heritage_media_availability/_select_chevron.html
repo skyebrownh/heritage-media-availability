@@ -1,0 +1,12 @@
+{% comment %}
+  #41: the down-arrow drawn over each team-form dropdown, from Tailwind Plus's
+  "simple native" select menu. The select hides the browser's own arrow
+  (appearance-none, forms.SELECT_CLASSES), and this sits in the same grid
+  cell, on the right. pointer-events-none lets taps pass through to the
+  select underneath, so the phone's native picker still opens. It stays
+  size-5 at every width (the block shrinks it to size-4 from 640px up,
+  alongside 14px text), to match the 16px text.
+{% endcomment %}
+<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" class="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500">
+  <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
+</svg>

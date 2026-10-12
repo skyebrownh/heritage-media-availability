@@ -6,13 +6,18 @@
   #7: all-month choice, tap-to-select calendar, and notes (TF-5 to TF-7).
   #8: submit, with server-side checks and plain-language messages (TF-8).
   #9: pre-fill an earlier submission for the chosen name and month (TF-9).
+  #41: styled from Tailwind Plus blocks (basic card, stacked form layout,
+  native select menu, textarea, alerts, small calendar, primary button) in
+  Tailwind's gray and indigo. Text inherits base.html's 16px on phones.
 {% endcomment %}
 
 {% block content %}
-{# p-4 on phones (more room for the 7-column calendar), p-6 on larger screens. #}
-<div class="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-neutral-200 sm:p-6">
-  <h1 class="text-2xl font-semibold">Heritage Media Availability</h1>
-  <p class="mt-2 text-neutral-600">Let the Scheduler know which days you can't serve.</p>
+{# Tailwind Plus's basic card: px-4 on phones (more room for the 7-column calendar), p-6 on larger screens. #}
+<div class="overflow-hidden rounded-lg bg-white shadow-sm">
+  <div class="px-4 py-5 sm:p-6">
+  {# Tailwind Plus's page heading, without its truncate, so the long title wraps instead of being cut off. #}
+  <h1 class="text-2xl/7 font-bold text-gray-900 sm:text-3xl sm:tracking-tight">Heritage Media Availability</h1>
+  <p class="mt-2 text-gray-600">Let the Scheduler know which days you can't serve.</p>
 
   {% comment %}
     novalidate turns off the browser's own "Please fill out this field"
@@ -20,7 +25,7 @@
     (TF-8) are shown instead, consistently everywhere.
   {% endcomment %}
   {# data-bound="true" means this page is a failed submit shown again; the script then keeps the person's edits instead of pre-filling over them. #}
-  <form method="post" novalidate class="mt-6 space-y-5" data-bound="{{ form.is_bound|yesno:'true,false' }}">
+  <form method="post" novalidate class="mt-8 space-y-6" data-bound="{{ form.is_bound|yesno:'true,false' }}">
     {# Django's protection against other websites posting to this form. #}
     {% csrf_token %}
 
@@ -28,22 +33,36 @@
       TF-8: after a failed submit, list everything that needs fixing.
       role="alert" makes screen readers read it out right away. A closed
       month is left out: its own message box below says all that's needed.
+      #41: adapted from Tailwind Plus's red "alert with list".
     {% endcomment %}
     {% if form.errors and not form.month_closed %}
-    <div role="alert" class="rounded-xl bg-red-50 p-4 text-red-800 ring-1 ring-red-200">
-      <p class="font-semibold">Almost there! Please fix:</p>
-      <ul class="mt-2 list-disc space-y-1 pl-5">
-        {% for field in form %}{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}{% endfor %}
-        {% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}
-      </ul>
+    <div role="alert" class="rounded-md bg-red-50 p-4">
+      <div class="flex">
+        <div class="shrink-0">
+          <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="size-5 text-red-400">
+            <path d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM8.28 7.22a.75.75 0 0 0-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 1 0 1.06 1.06L10 11.06l1.72 1.72a.75.75 0 1 0 1.06-1.06L11.06 10l1.72-1.72a.75.75 0 0 0-1.06-1.06L10 8.94 8.28 7.22Z" clip-rule="evenodd" fill-rule="evenodd" />
+          </svg>
+        </div>
+        <div class="ml-3">
+          <p class="font-medium text-red-800">Almost there! Please fix:</p>
+          <ul role="list" class="mt-2 list-disc space-y-1 pl-5 text-red-700">
+            {% for field in form %}{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}{% endfor %}
+            {% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}
+          </ul>
+        </div>
+      </div>
     </div>
     {% endif %}
 
-    {# TF-2: who is this? #}
+    {# TF-2: who is this? Label above, dropdown below, as in Tailwind Plus's stacked form layout. #}
     <div>
-      <label for="{{ form.member.id_for_label }}" class="mb-2 block font-medium">{{ form.member.label }}</label>
-      {{ form.member }}
-      {% for error in form.member.errors %}<p class="mt-2 font-medium text-red-700">{{ error }}</p>{% endfor %}
+      <label for="{{ form.member.id_for_label }}" class="block font-medium text-gray-900">{{ form.member.label }}</label>
+      {# The select and its chevron share one grid cell, so the chevron sits on top at the right. #}
+      <div class="mt-2 grid grid-cols-1">
+        {{ form.member }}
+        {% include "heritage_media_availability/_select_chevron.html" %}
+      </div>
+      {% for error in form.member.errors %}<p class="mt-2 text-red-600">{{ error }}</p>{% endfor %}
 
       {% comment %}
         TF-12 (#46): a reminder for people with a standing availability note
@@ -52,19 +71,31 @@
         MemberSelect); the script below fills in the note and shows the box
         when such a name is picked or preselected. The outer div is a live
         region that's always on the page, so screen readers announce the
-        reminder when it appears. Adapted from Tailwind Plus's blue info
-        alert (Feedback > Alerts).
+        reminder when it appears.
+        #41: adapted from Tailwind Plus's blue "alert with description"
+        (Feedback > Alerts), laid out like a stat card: a small uppercase
+        label, the value large and dark (so it's read first), then the
+        explanation. The "Your last answer" box below uses the same layout
+        with a different icon, so the two match when both are showing.
+        Sizes (decision 2026-10-12): label 12px, value 16px bold, explanation
+        14px, so the box stays compact next to the 16px form. The label sits
+        close above its value (they belong together), with more room before
+        the explanation.
       {% endcomment %}
       <div id="standing-reminder" role="status">
         <div id="standing-box" class="mt-3 rounded-md bg-blue-50 p-4" hidden>
-          <div class="flex gap-3">
-            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="size-5 shrink-0 text-blue-400">
-              <path d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z" clip-rule="evenodd" fill-rule="evenodd" />
-            </svg>
-            <p class="text-base text-blue-700 sm:text-sm">
-              <strong class="font-semibold">Your standing availability:</strong> <span id="standing-text"></span>.<br>
-              You only need to fill this out if that won't work this month.
-            </p>
+          <div class="flex">
+            <div class="shrink-0">
+              {# An "i" for information. #}
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="size-5 text-blue-400">
+                <path d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z" clip-rule="evenodd" fill-rule="evenodd" />
+              </svg>
+            </div>
+            <div class="ml-3">
+              <p class="text-xs/5 font-semibold tracking-wide text-blue-700 uppercase">Your standing availability</p>
+              <p id="standing-text" class="mt-0.5 font-semibold text-blue-900"></p>
+              <p class="mt-2 text-sm/6 text-blue-700">You only need to fill this out if that won't work this month.</p>
+            </div>
           </div>
         </div>
       </div>
@@ -72,10 +103,13 @@
 
     {# TF-3: which month? Closed months carry data-closed for the script below. #}
     <div>
-      <label for="{{ form.month.id_for_label }}" class="mb-2 block font-medium">{{ form.month.label }}</label>
-      {{ form.month }}
+      <label for="{{ form.month.id_for_label }}" class="block font-medium text-gray-900">{{ form.month.label }}</label>
+      <div class="mt-2 grid grid-cols-1">
+        {{ form.month }}
+        {% include "heritage_media_availability/_select_chevron.html" %}
+      </div>
       {% if not form.month_closed %}
-        {% for error in form.month.errors %}<p class="mt-2 font-medium text-red-700">{{ error }}</p>{% endfor %}
+        {% for error in form.month.errors %}<p class="mt-2 text-red-600">{{ error }}</p>{% endfor %}
       {% endif %}
     </div>
 
@@ -93,29 +127,51 @@
     <template id="closed-month-template">{% include "heritage_media_availability/_closed_month_box.html" %}</template>
 
     {# Everything below is hidden for a closed month (TF-4). #}
-    <section id="form-details" class="space-y-5"{% if form.month_closed %} hidden{% endif %}>
+    <section id="form-details" class="space-y-6"{% if form.month_closed %} hidden{% endif %}>
 
       {% comment %}
         TF-9: read-only reminder of this person's current submission for the
-        month, e.g. "Your last submission (10/02/26): Oct 3-7, 20. Submitting
-        again replaces it." The script fills it in; it stays put while they
-        edit, and "empty:hidden" hides it when there's nothing to show.
-        role="status" reads it out when it appears.
+        month. It stays put while they edit. The script fills in the answer
+        (the lookup's "summary") and shows the box, or hides it when there's
+        nothing earlier. The outer div is an always-present live region
+        (role="status"), so screen readers read the box out when it appears:
+        "Your last answer, Nov 3-7, 20, Submitting again replaces it."
+        #41: the same stat-card layout as the standing reminder, with a
+        clock icon. No submission date (decision 2026-10-12).
       {% endcomment %}
-      <p id="previous-summary" role="status" class="rounded-xl bg-neutral-100 p-4 text-neutral-700 empty:hidden"></p>
+      <div id="previous-summary" role="status">
+        <div id="previous-box" class="rounded-md bg-blue-50 p-4" hidden>
+          <div class="flex">
+            <div class="shrink-0">
+              {# A clock, for "earlier". #}
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="size-5 text-blue-400">
+                <path d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-13a.75.75 0 0 0-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 0 0 0-1.5h-3.25V5Z" clip-rule="evenodd" fill-rule="evenodd" />
+              </svg>
+            </div>
+            <div class="ml-3">
+              <p class="text-xs/5 font-semibold tracking-wide text-blue-700 uppercase">Your last answer</p>
+              <p id="previous-answer" class="mt-0.5 font-semibold text-blue-900"></p>
+              <p class="mt-2 text-sm/6 text-blue-700">Submitting again replaces it.</p>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {# TF-6: the all-month choice sits above the calendar. #}
       <div>
-        <label for="{{ form.kind.id_for_label }}" class="mb-2 block font-medium">{{ form.kind.label }}</label>
-        {{ form.kind }}
-        {% for error in form.kind.errors %}<p class="mt-2 font-medium text-red-700">{{ error }}</p>{% endfor %}
+        <label for="{{ form.kind.id_for_label }}" class="block font-medium text-gray-900">{{ form.kind.label }}</label>
+        <div class="mt-2 grid grid-cols-1">
+          {{ form.kind }}
+          {% include "heritage_media_availability/_select_chevron.html" %}
+        </div>
+        {% for error in form.kind.errors %}<p class="mt-2 text-red-600">{{ error }}</p>{% endfor %}
       </div>
 
       {# Day problems (none picked, or a day the month doesn't have) show above the calendar. #}
-      {% for error in form.days.errors %}<p class="font-medium text-red-700">{{ error }}</p>{% endfor %}
+      {% for error in form.days.errors %}<p class="text-red-600">{{ error }}</p>{% endfor %}
 
-      {# Shown until a month is picked, since the calendar depends on the month. #}
-      <p id="calendar-hint" class="rounded-xl bg-neutral-100 p-4 text-neutral-600">Choose a month to see its calendar.</p>
+      {# Shown until a month is picked, since the calendar depends on the month. A gray Tailwind Plus well: just a hint, so quieter than the blue boxes. #}
+      <p id="calendar-hint" class="rounded-lg bg-gray-50 px-4 py-5 text-gray-600">Choose a month to see its calendar.</p>
 
       {% comment %}
         TF-5: one calendar per month in the dropdown. All start hidden and
@@ -129,53 +185,60 @@
       {% endcomment %}
       {% for calendar in form.calendars %}
       <fieldset data-month="{{ calendar.month }}" hidden disabled class="group">
-        <legend class="mb-1 font-medium">Which days can't you serve?</legend>
-        <p class="mb-3 text-neutral-600">{{ calendar.label }} · tap each day you're out.</p>
+        <legend class="font-medium text-gray-900">Which days can't you serve?</legend>
+        <p class="mt-1 text-gray-600">{{ calendar.label }} · tap each day you're out.</p>
 
         {# Shown by the script while an all-month option is chosen (TF-6). #}
-        <p data-kind-note hidden class="mb-3 text-neutral-600">Calendar not needed for this choice.</p>
+        <p data-kind-note hidden class="mt-1 text-gray-600">Calendar not needed for this choice.</p>
 
         {% comment %}
-          Seven columns, Sunday first. On a 375px phone the grid stretches
-          slightly into the card's padding (-mx-2) with tiny gaps, so each
-          square is about 45px wide; squares are 48px tall (h-12).
-          Tap targets must be at least 44px.
+          #41: adapted from Tailwind Plus's small calendar (Data Display >
+          Calendars). Seven columns, Sunday first. The day grid's 1px gaps
+          show its gray background (bg-gray-200) as thin lines between the
+          white days. overflow-hidden rounds the grid's outer corners; the
+          focus outline is drawn inside each day (-outline-offset-2) so it
+          isn't clipped. At 375px each day is about 44px wide and 40px tall,
+          above WCAG's 24px minimum target.
         {% endcomment %}
-        <div class="-mx-2 grid grid-cols-7 gap-0.5 text-center sm:mx-0 sm:gap-1">
-          {# Weekday headings are for sighted users; each day's label already says its weekday. #}
-          {% for weekday in "SMTWTFS" %}
-          <div aria-hidden="true" class="pb-1 text-sm font-medium text-neutral-500">{{ weekday }}</div>
-          {% endfor %}
-
+        {# Weekday headings are for sighted users; each day's label already says its weekday. #}
+        <div aria-hidden="true" class="mt-4 grid grid-cols-7 text-center text-gray-500">
+          {% for weekday in "SMTWTFS" %}<div>{{ weekday }}</div>{% endfor %}
+        </div>
+        <div class="mt-2 grid grid-cols-7 gap-px overflow-hidden rounded-lg bg-gray-200 shadow-sm ring-1 ring-gray-200">
           {% for week in calendar.weeks %}
             {% for day in week %}
               {% if day %}
-              <div>
+              {# group/day lets the number's circle react to this day's checkbox being ticked (group-has-checked/day). #}
+              <div class="group/day">
                 {# "checked" re-ticks days after a failed submit, so nothing has to be redone. #}
                 <input type="checkbox" name="days" value="{{ day.day }}"
                        id="day-{{ calendar.month }}-{{ day.day }}" class="peer sr-only"
                        {% if day.day in calendar.checked %}checked{% endif %}>
                 {% comment %}
-                  peer-checked: styles the square when its checkbox is ticked:
-                  pastel blue plus a checkmark, so "selected" isn't shown by
-                  color alone. peer-focus-visible: draws the keyboard focus
-                  ring. group-disabled: dims everything while the fieldset is
-                  disabled (all-month option chosen).
+                  The tappable day. peer-focus-visible: draws the keyboard
+                  focus outline. group-disabled: grays out the days while the
+                  fieldset is disabled (all-month option chosen, TF-6).
+                  hover: only applies on devices with a mouse, so a tapped
+                  day on a phone doesn't stay highlighted.
                 {% endcomment %}
                 <label for="day-{{ calendar.month }}-{{ day.day }}"
-                       class="flex h-12 cursor-pointer select-none items-center justify-center rounded-lg border border-neutral-200 bg-white text-base
-                              peer-checked:border-accent-500 peer-checked:bg-accent-200 peer-checked:font-semibold peer-checked:text-accent-700
-                              peer-checked:after:ml-0.5 peer-checked:after:text-xs peer-checked:after:content-['✓']
-                              peer-focus-visible:ring-4 peer-focus-visible:ring-accent-200
-                              group-disabled:cursor-not-allowed group-disabled:opacity-40">
+                       class="flex cursor-pointer select-none bg-white py-1.5 text-gray-900 hover:bg-gray-100
+                              peer-focus-visible:outline-2 peer-focus-visible:-outline-offset-2 peer-focus-visible:outline-indigo-600
+                              group-disabled:cursor-not-allowed group-disabled:bg-gray-50 group-disabled:text-gray-400">
+                  {% comment %}
+                    The number in its circle. A ticked day becomes a solid
+                    indigo circle with a bold white number: a change of fill
+                    and shape, not color alone. Screen readers hear the
+                    checkbox's own "checked" instead.
+                  {% endcomment %}
+                  <span aria-hidden="true" class="mx-auto flex size-7 items-center justify-center rounded-full group-has-checked/day:bg-indigo-600 group-has-checked/day:font-semibold group-has-checked/day:text-white">{{ day.day }}</span>
                   {# Screen readers hear "Saturday, October 3"; sighted users see "3". #}
-                  <span aria-hidden="true">{{ day.day }}</span>
                   <span class="sr-only">{{ day|date:"l, F j" }}</span>
                 </label>
               </div>
               {% else %}
-              {# Blank square before the 1st or after the last day. #}
-              <div></div>
+              {# Blank square before the 1st or after the last day, in the block's light gray. #}
+              <div class="bg-gray-50"></div>
               {% endif %}
             {% endfor %}
           {% endfor %}
@@ -185,20 +248,21 @@
 
       {# TF-7: optional notes; maxlength="500" comes from the form field. #}
       <div>
-        <label for="{{ form.notes.id_for_label }}" class="mb-2 block font-medium">{{ form.notes.label }}</label>
-        {{ form.notes }}
+        <label for="{{ form.notes.id_for_label }}" class="block font-medium text-gray-900">{{ form.notes.label }}</label>
+        <div class="mt-2">{{ form.notes }}</div>
         {# The id matches the aria-describedby Django adds to the box, so screen readers read this hint too. #}
-        <p id="{{ form.notes.auto_id }}_helptext" class="mt-2 text-sm text-neutral-600">{{ form.notes.help_text }}</p>
-        {% for error in form.notes.errors %}<p class="mt-2 font-medium text-red-700">{{ error }}</p>{% endfor %}
+        <p id="{{ form.notes.auto_id }}_helptext" class="mt-3 text-gray-600">{{ form.notes.help_text }}</p>
+        {% for error in form.notes.errors %}<p class="mt-2 text-red-600">{{ error }}</p>{% endfor %}
       </div>
 
-      {# Send it. Full width and 48px tall, an easy target on a phone. #}
+      {# Send it. Tailwind Plus's largest primary button, full width so it's easy to tap. #}
       <button type="submit"
-              class="flex min-h-12 w-full items-center justify-center rounded-xl bg-accent-700 px-4 py-3 text-lg font-semibold text-white hover:opacity-90 focus:outline-none focus:ring-4 focus:ring-accent-200">
+              class="flex w-full justify-center rounded-md bg-indigo-600 px-3.5 py-2.5 font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
         Submit
       </button>
     </section>
   </form>
+  </div>
 </div>
 
 <script>
@@ -219,7 +283,8 @@
     const form = monthSelect.form;
     const memberSelect = document.getElementById('{{ form.member.id_for_label }}');
     const notesBox = document.getElementById('{{ form.notes.id_for_label }}');
-    const summary = document.getElementById('previous-summary');
+    const previousBox = document.getElementById('previous-box');
+    const previousAnswer = document.getElementById('previous-answer');
     const LOOKUP_URL = "{% url 'heritage_media_availability:last_submission' %}";
     const message = document.getElementById('closed-month-message');
     const closedBox = document.getElementById('closed-month-template');
@@ -239,6 +304,16 @@
       const note = option ? (option.dataset.standing || '') : '';
       standingText.textContent = note.trim().replace(/\.$/, '');
       standingBox.hidden = !note.trim();
+    }
+
+    /**
+     * TF-9: show the earlier answer (e.g. "Nov 3-7, 20") in the summary
+     * box, or hide the box when `summary` is empty. The text is filled in
+     * before the box is shown, so screen readers hear the new content.
+     */
+    function showSummary(summary) {
+      previousAnswer.textContent = summary || '';
+      previousBox.hidden = !summary;
     }
 
     /** Untick every day in one calendar. */
@@ -340,7 +415,7 @@
      */
     async function loadPrevious(fill) {
       const thisLookup = ++lookupNumber;
-      summary.textContent = '';
+      showSummary(null);
 
       if (!memberSelect.value || !monthSelect.value || chosenMonthIsClosed()) {
         if (fill && prefilled) resetToBlank();
@@ -362,7 +437,7 @@
       if (thisLookup !== lookupNumber) return;
 
       if (previous.found) {
-        summary.textContent = previous.summary;
+        showSummary(previous.summary);
         if (fill) {
           fillFrom(previous);
           prefilled = true;
