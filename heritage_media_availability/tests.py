@@ -1717,6 +1717,103 @@ class SeedCommandTests(TestCase):
             seed()
 
 
+class StandingAvailabilityTests(TestCase):
+    """#46: members with a standing availability note don't owe a response each month."""
+
+    def setUp(self):
+        # Pinned so everyone counts as on the team for November 2026.
+        self.enterContext(at_utc(2026, 10, 5, 16, 0))
+        self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
+        # Amy: standing note, but answered (with form notes too). Bob: answered.
+        # Zoe: standing note, no answer. Ann: no answer.
+        amy = Member.objects.create(first_name='Amy', last_name='Lee', standing_availability='1st and 3rd Sundays')
+        bob = Member.objects.create(first_name='Bob', last_name='Smith')
+        Member.objects.create(first_name='Zoe', last_name='Ray', standing_availability='3rd Sundays only')
+        Member.objects.create(first_name='Ann', last_name='Fox')
+        Submission.objects.create(member=amy, month='2026-11', kind='days', days=[3, 4, 5], notes='Back by noon')
+        Submission.objects.create(member=bob, month='2026-11', kind='available_all')
+        self.responses = month_responses('2026-11')
+
+    def dashboard(self):
+        return self.client.get(reverse('admin:index'), {'month': '2026-11'})
+
+    def test_by_person_order_is_responders_then_standing_then_the_rest(self):
+        # Zoe comes before Ann even though Ann is earlier A-Z.
+        self.assertEqual([r.name for r in self.responses.by_person], ['Amy', 'Bob', 'Zoe', 'Ann'])
+
+    def test_standing_non_responders_are_not_counted(self):
+        responses = self.responses
+        self.assertEqual((responses.responded_count, responses.total, responses.standing_count), (2, 3, 1))
+        self.assertIn('Responses 2 of 3 responded · 1 standing', visible_text(self.dashboard()))
+
+    def test_no_standing_wording_when_nobody_is_standing(self):
+        Member.objects.filter(first_name='Zoe').update(standing_availability='')
+        text = visible_text(self.dashboard())
+        self.assertIn('Responses 2 of 4 responded', text)
+        self.assertNotIn('standing', text.split('Responses', 1)[1].split('Name', 1)[0])
+
+    def test_copy_text_shows_the_note_in_parentheses_only_when_not_responded(self):
+        self.assertEqual(
+            by_person_text(self.responses),
+            'Amy: 3-5\nBob: NA\nZoe: (3rd Sundays only)\nAnn: no response',
+        )
+
+    def test_by_date_is_unchanged(self):
+        self.assertEqual(by_date_text(self.responses), '3: Amy\n4: Amy\n5: Amy')
+
+    def test_tracker_shows_standing_badge_with_note(self):
+        html = self.dashboard().content.decode()
+        tracker = html[html.index('id="tracker"'):html.index('id="by-person"')]
+        zoe = re.search(r'(?s)Zoe.*?</tr>', tracker).group(0)
+        self.assertIn('Standing', zoe)
+        self.assertIn('<span class="tracker-standing">3rd Sundays only</span>', zoe)
+        self.assertNotIn('Not responded', zoe)
+        ann = re.search(r'(?s)Ann.*?</tr>', tracker).group(0)
+        self.assertIn('Not responded', ann)
+
+    def test_by_person_on_screen(self):
+        html = self.dashboard().content.decode()
+        by_person = html[html.index('id="by-person"'):html.index('class="copy-area"', html.index('id="by-person"'))]
+        # Zoe (standing, no answer): only the standing line, no parentheses
+        # (those are for the copy text) and no "No response".
+        zoe = re.search(r'(?s)Zoe.*?</tr>', by_person).group(0)
+        self.assertRegex(zoe, r'(?s)class="answer-standing answer-standing-alone".*event_repeat.*3rd Sundays only')
+        self.assertNotIn('(3rd Sundays only)', zoe)
+        self.assertNotIn('No response', zoe)
+        # Amy (standing, answered): answer, then the standing line, then her form notes.
+        amy = re.search(r'(?s)Amy.*?</tr>', by_person).group(0)
+        self.assertRegex(
+            amy,
+            r'(?s)3-5.*class="answer-standing".*event_repeat.*1st and 3rd Sundays.*class="answer-notes">Back by noon',
+        )
+
+    def test_team_form_marks_names_with_a_standing_note(self):
+        Member.objects.filter(first_name='Zoe').update(standing_availability='Only "3rd" Sundays & holidays')
+        html = self.client.get(reverse('heritage_media_availability:team_form')).content.decode()
+        zoe = re.search(r'<option[^>]*>Zoe Ray</option>', html).group(0)
+        # Escaped like any other text on the page.
+        self.assertIn('data-standing="Only &quot;3rd&quot; Sundays &amp; holidays"', zoe)
+        bob = re.search(r'<option[^>]*>Bob Smith</option>', html).group(0)
+        self.assertNotIn('data-standing', bob)
+        # The reminder box is on the page, hidden until the script shows it, inside a live region.
+        self.assertIn('<div id="standing-reminder" role="status">', html)
+        self.assertRegex(html, r'id="standing-box"[^>]*hidden')
+        self.assertIn('You only need to fill this out if that won', html)
+
+    def test_roster_edit_page_saves_the_note_and_list_shows_it(self):
+        ann = Member.objects.get(first_name='Ann')
+        response = self.client.post(
+            reverse('admin:heritage_media_availability_member_change', args=[ann.pk]),
+            {'first_name': 'Ann', 'last_name': 'Fox', 'is_active': 'on', 'standing_availability': '2nd Sundays only'},
+        )
+        self.assertEqual(response.status_code, 302)
+        ann.refresh_from_db()
+        self.assertEqual(ann.standing_availability, '2nd Sundays only')
+        roster = self.client.get(reverse('admin:heritage_media_availability_member_changelist'))
+        self.assertContains(roster, '2nd Sundays only')
+        self.assertContains(roster, 'Standing')
+
+
 @override_settings(DEBUG=True)
 class DashboardScenarioTests(TestCase):
     """#26: the dashboard scenario sets up #20's cases, dated from "today"."""
@@ -1732,7 +1829,9 @@ class DashboardScenarioTests(TestCase):
             [r.name for r in responses.active],
             ['Amy', 'Bob Johnson', 'Bob Jones', 'Bob S.', 'emily', 'Grace', 'Jack'],
         )
-        self.assertEqual((responses.responded_count, responses.total), (4, 7))
+        # #46: Grace has a standing note and hasn't answered, so she isn't counted: "4 of 6 · 1 standing".
+        self.assertEqual((responses.responded_count, responses.total, responses.standing_count), (4, 6, 1))
+        self.assertEqual([r.name for r in responses.active if r.is_standing], ['Grace'])
         self.assertEqual([r.name for r in responses.inactive], ['Henry Park'])
         # emily resubmitted: the newer answer counts.
         emily = next(r for r in responses.active if r.name == 'emily')

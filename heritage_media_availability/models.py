@@ -36,6 +36,20 @@ class Member(models.Model):
         help_text='Untick when someone steps away. Their past submissions are kept.',
     )
     created_at = models.DateTimeField('added', auto_now_add=True)
+    # #46: a short note for people with a fixed pattern, e.g. "3rd Sundays only".
+    # Anyone with one doesn't owe a response each month: the dashboard shows
+    # the note instead of "Not responded" and leaves them out of the count,
+    # and the team form reminds them. Free text: the app never works out
+    # dates from it (recurring rules are a "Later" item in SPEC.md).
+    standing_availability = models.CharField(
+        'standing availability',
+        max_length=100,
+        blank=True,
+        help_text=(
+            "e.g. 3rd Sundays only. People with one don't need to respond each month. "
+            'Shown to them on the team form.'
+        ),
+    )
 
     class Meta:
         # TF-2 and the admin views sort by first name, then last name.

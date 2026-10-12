@@ -69,16 +69,17 @@ IDs let you reference each requirement when prompting an AI coding tool or testi
 | TF-9 | If the person already submitted for that month, the form pre-fills with it: the calendar days (or all-month choice) and notes start from the earlier submission, so they only change what's different. A read-only summary of that earlier submission stays visible above the calendar as a reference while they edit, e.g. "Your last submission (10/02/26): Oct 3-7, 20. Submitting again replaces it." For all-month choices it reads "available all month" or "unavailable all month". |
 | TF-10 | After submitting, a confirmation restates what was saved, greeting by first name, with a button to fill out another month. Days name the month once, then list ranges: "Thanks, Bob! You're unavailable Oct 3-7, and 20." (one range: "Oct 3-7"; three or more: "Oct 3-7, 10, and 20"). All-month choices read "Thanks, Bob! You're available all of November." and "Thanks, Bob! You're unavailable all of November." |
 | TF-11 | The browser remembers the name from its last successful submit, for a year, so returning users find their name already selected. Only active members are preselected; otherwise the dropdown starts empty. Picking a different name and submitting remembers that one instead. Nothing is remembered if the browser blocks cookies. |
+| TF-12 | If the chosen name has a standing availability note (AD-2), a reminder appears under the name: "Your standing availability: 3rd Sundays only. You only need to fill this out if that won't work this month." It also appears for a preselected name (TF-11). Submitting still works normally. |
 
 ### Admin
 
 | ID | Requirement |
 | --- | --- |
 | AD-1 | The admin area sits at a separate path behind Django's admin login (one superuser account, Skye). The login lasts about 30 days per device. |
-| AD-2 | Roster: add a person (first and last name, both required), edit their name, toggle active or inactive. The first + last name pair is unique regardless of capitalization. Inactive people leave the dropdown and tracker, but their past submissions stay. No hard delete in v1. |
+| AD-2 | Roster: add a person (first and last name, both required), edit their name, toggle active or inactive, and give them an optional standing availability note (up to 100 characters, e.g. "3rd Sundays only") if they serve on a fixed pattern and don't need to respond each month. The note is shown to them on the team form (TF-12). The first + last name pair is unique regardless of capitalization. Inactive people leave the dropdown and tracker, but their past submissions stay. No hard delete in v1. |
 | AD-3 | A month selector covers past months (read-only reference) through 6 months ahead. Past months are offered if they have any submission or were ever closed. The dashboard opens on next month, the one usually being collected. |
-| AD-4 | The response tracker lists every active member as Responded or Not responded, with the last-submitted time and a count like "12 of 17 responded." Members added to the roster after a month ended aren't listed for it, unless they submitted for it. Inactive members who submitted for the month appear in a separate "No longer active" section at the bottom, by full name, with their answer and notes; they're left out of the count and all copy text. |
-| AD-5 | The by-person view lists each member's unavailable days in compact ranges, any all-month choice, and their notes (on a line under the answer). It uses the same order as the by-person copy text: responders A–Z, then non-responders A–Z. |
+| AD-4 | The response tracker lists every active member as Responded or Not responded, with the last-submitted time and a count like "12 of 17 responded." A member with a standing availability note who hasn't responded shows as Standing, with their note, instead of Not responded; they're left out of the count and shown beside it ("12 of 15 responded · 2 standing"). Once they respond, they're counted like anyone else. Members added to the roster after a month ended aren't listed for it, unless they submitted for it. Inactive members who submitted for the month appear in a separate "No longer active" section at the bottom, by full name, with their answer and notes; they're left out of the count and all copy text. |
+| AD-5 | The by-person view lists each member's unavailable days in compact ranges, any all-month choice, and their notes (on a line under the answer). It uses the same order as the by-person copy text: responders A–Z, then standing members who haven't responded A–Z, then non-responders A–Z. Anyone with a standing note has it shown on its own line, marked with a repeat icon and styled apart from their notes: alone if they haven't responded, or under their answer if they have, so a partial overlap is easy to spot. (Only the copy text puts the note in parentheses.) |
 | AD-6 | The by-date view lists each day of the month that has anyone unavailable, with who's out. Days with nobody out are skipped, matching the copy text below. People marked "unavailable all month" are not repeated on each day; they're listed once in a note at the top of the view. On screen, each day also shows its weekday for context ("Fri 4"); the copy text doesn't. When nobody is out, the view says "No responses yet." if no one has responded, or "Nobody is unavailable this month (3 of 7 responded)." if everyone who has responded is available all month, and there's no copy text. |
 | AD-7 | The by-person and by-date views each have a copy button that copies their text format below to the clipboard, as plain text. The button briefly reads "Copied!", announced to screen readers. If the browser blocks copying, the text is selected instead, with the message "Couldn't copy automatically. The text is selected, so use your device's Copy command." There's no button when there's nothing to copy. |
 | AD-8 | Skye closes and reopens months in the admin, on a Months page and on the dashboard. The Months page lists this month through 6 months ahead, then the 6 months before (past months included); each month shows Open or Closed, its response count ("5 of 6"), and a Close or Reopen button. The dashboard shows the selected month's Open or Closed status with a Close month or Reopen month button. Both happen at once, with no confirmation step, since each is undone with one click; each shows a message ("Closed November 2026.") and are recorded in the month's History. Nothing closes automatically; Skye closes months by hand. |
@@ -89,7 +90,7 @@ The tracker, by-person and by-date views, and both copy formats show each person
 
 ### Copy formats
 
-**By person:** one line per active member, by display name. Responders come first, A–Z by first name, then non-responders, also A–Z by first name. Consecutive days collapse into ranges, and "NA" means available all month.
+**By person:** one line per active member, by display name. Responders come first, A–Z by first name, then members with a standing availability note who haven't responded (their note in parentheses), then the other non-responders, each group A–Z by first name. A standing member who has responded shows only their answer. Consecutive days collapse into ranges, and "NA" means available all month.
 
 ```
 Bob: 3-7, 20
@@ -97,6 +98,7 @@ Emily: 13
 Jane: 1, 4, 10-11, 27-31
 Jim: NA
 Sam: unavailable all month
+Grace: (3rd Sundays only)
 Tom: no response
 ```
 
@@ -153,6 +155,7 @@ Three tables cover v1. Keeping every submission, and reading the newest per pers
 | first\_name  | text      | Required                                                                                |
 | last\_name   | text      | Required. The (first\_name, last\_name) pair is unique regardless of capitalization ("bob smith" = "Bob Smith") |
 | is\_active   | boolean   | Default true                                                                            |
+| standing\_availability | text | Optional, up to 100 characters, e.g. "3rd Sundays only". Empty for most people        |
 | created\_at  | timestamp |                                                                                         |
 
 ### submissions
@@ -252,3 +255,4 @@ Spec decisions that aren't captured in a requirement above, with the date they w
 - 2026-10-10: On the roster (#42), each person shows an Active or Inactive badge and a one-click Deactivate / Activate button that applies at once (recorded in their History), replacing the checkboxes that waited for Save. The edit page's Active checkbox still works. The name opens the edit page. All / Active / Inactive tabs (with counts) sit beside the roster's search box, and a month dropdown beside the submission history's.
 - 2026-10-10: Testing happens on a staging site on Railway (#45): the same code as production, deployed from `main`, with its own database and a "Test site" banner on every page, so testers' practice entries never reach production. The pilot runs there; the launch uses production. There's no separate staging branch.
 - 2026-10-11: Staging can be refreshed with a copy of production's members, submissions and closed months (not admin logins or History), so testers see the real roster. Copying only ever runs toward staging (or a local database), never into production. Previewing unmerged changes on staging is not set up for now.
+- 2026-10-11: Some members serve on a fixed pattern (e.g. only 3rd Sundays), so Skye doesn't need a response from them each month (#46). A standing availability note on the roster marks them: when they haven't responded, the dashboard shows the note instead of "Not responded", leaves them out of the count but shows how many ("· 2 standing"), and lists them between responders and non-responders in By person, with the note in parentheses in the copy text. When they do respond, their note stays visible on screen (not in copy text) in case their answer only partly overlaps it. The team form reminds them (TF-12). The app doesn't work out dates from the note; recurring rules stay a Later item. Like active status, only the current note is stored, so it also applies when looking back at past months.
