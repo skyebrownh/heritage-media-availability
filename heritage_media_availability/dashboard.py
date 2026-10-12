@@ -41,6 +41,20 @@ class Response:
         """AD-5: their answer as the by-person view shows it, e.g. "3-7, 20" or "No response"."""
         return answer_label(self.submission)
 
+    @property
+    def standing(self):
+        """#46: their standing availability note ("3rd Sundays only"), or "" if they have none."""
+        return self.member.standing_availability
+
+    @property
+    def is_standing(self):
+        """
+        #46: has a standing note and hasn't responded, so nothing is owed:
+        shown as Standing rather than Not responded, and not counted. Once
+        they do respond, they count like anyone else.
+        """
+        return not self.responded and bool(self.standing)
+
 
 @dataclass
 class ByDate:
@@ -80,20 +94,34 @@ class MonthResponses:
         return sum(1 for response in self.active if response.responded)
 
     @property
+    def standing_count(self):
+        """#46: the "2" in "· 2 standing": people not responding because they don't need to."""
+        return sum(1 for response in self.active if response.is_standing)
+
+    @property
     def total(self):
-        """The "17" in "12 of 17 responded" (AD-4)."""
-        return len(self.active)
+        """
+        The "17" in "12 of 17 responded" (AD-4): everyone a response is
+        expected from, so standing non-responders (#46) are left out.
+        """
+        return len(self.active) - self.standing_count
 
     @property
     def by_person(self):
         """
-        AD-5 / AD-7: the active rows in by-person order: responders, then non-responders.
+        AD-5 / AD-7: the active rows in by-person order: responders, then
+        standing non-responders (#46), then everyone else who hasn't responded.
 
         Each group stays A–Z, because `active` already is and Python's sort
         is stable (rows that tie keep their order). The view and the copy
         text both use this, so they always list people in the same order.
         """
-        return sorted(self.active, key=lambda response: not response.responded)
+        def group(response):
+            if response.responded:
+                return 0
+            return 1 if response.is_standing else 2
+
+        return sorted(self.active, key=group)
 
     @property
     def by_date(self):

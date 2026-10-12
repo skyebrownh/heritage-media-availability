@@ -146,6 +146,7 @@ Formats and routines for each step of the loop above. Recent issues and PRs (e.g
 - Every submission is kept. The newest per member and month is the current one ("last submission wins").
 - A submission's `kind` is exactly one of `days`, `available_all`, or `unavailable_all`. `days` is empty unless kind is `days`.
 - Any submission counts as a response. Inactive members are hidden from the dropdown, tracker, and copy output, but their history stays. On Skye's dashboard, inactive members who responded to the selected month appear in a separate "No longer active" section (never counted or copied), and members added after a month ended aren't listed for it.
+- Members with a standing availability note (e.g. "3rd Sundays only") don't owe a response: until they respond, they show as Standing, aren't counted ("· 2 standing" instead), and sit between responders and non-responders in By person. The app never works out dates from the note.
 - Copy output formats must match SPEC.md exactly (by-person and by-date).
 - Out of scope for v1. Do not build: notifications, phone login, recurring availability rules, export, time-of-day availability, roles, scheduling.
 

@@ -53,8 +53,8 @@
     anything placed above it.
   {% endcomment %}
   {% if responses.active %}{% capture as tracker_count silent %}
-      {# Big number, small words; read aloud as "5 of 7 responded". #}
-      <p class="dashboard-count"><strong>{{ responses.responded_count }}</strong> of {{ responses.total }} responded</p>
+      {# Big number, small words; read aloud as "5 of 7 responded". #46: people with a standing note who haven't responded aren't counted, but how many there are shows beside it. #}
+      <p class="dashboard-count"><strong>{{ responses.responded_count }}</strong> of {{ responses.total }} responded{% if responses.standing_count %} · {{ responses.standing_count }} standing{% endif %}</p>
   {% endcapture %}{% endif %}
   {% component "unfold/components/card.html" with title="Responses" action=tracker_count %}
     <div id="tracker">

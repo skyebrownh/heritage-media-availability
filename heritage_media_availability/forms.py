@@ -90,6 +90,27 @@ class MonthSelect(forms.Select):
         return option
 
 
+class MemberSelect(forms.Select):
+    """
+    The name dropdown, marking people who have a standing availability note
+    for the page script (TF-12, #46).
+
+    Their options carry the note in a `data-standing` attribute. The script
+    reads it when the name changes (or is preselected, TF-11) and shows the
+    reminder that they only need to submit if it won't work this month,
+    with no extra trip to the server. Django escapes the note in the HTML.
+    """
+
+    def create_option(self, name, value, *args, **kwargs):
+        """Build one <option>, adding data-standing if that member has a note."""
+        option = super().create_option(name, value, *args, **kwargs)
+        # Django wraps each choice's value so it still knows the Member it came from.
+        member = getattr(value, 'instance', None)
+        if member is not None and member.standing_availability:
+            option['attrs']['data-standing'] = member.standing_availability
+        return option
+
+
 class TeamForm(forms.ModelForm):
     """
     The team availability form (TF-2 to TF-8).
@@ -113,7 +134,7 @@ class TeamForm(forms.ModelForm):
         label='Your name',
         queryset=Member.objects.filter(is_active=True),
         empty_label='Choose your name',
-        widget=forms.Select(attrs={'class': SELECT_CLASSES}),
+        widget=MemberSelect(attrs={'class': SELECT_CLASSES}),
         # TF-8: plain-language messages for each missing piece.
         error_messages={
             'required': 'Please choose your name.',

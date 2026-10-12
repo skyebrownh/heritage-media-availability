@@ -18,7 +18,7 @@ from urllib.parse import urlencode
 from django.template.defaultfilters import date as date_filter
 from django.template.defaultfilters import linebreaksbr
 from django.template.loader import render_to_string
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 from django.urls import reverse
 from django.utils.timezone import localtime
 
@@ -62,9 +62,17 @@ def month_select(month, past, upcoming):
 
 
 def status_label(response):
-    """AD-4: Unfold's label (badge) helper. The words carry the meaning; color only helps scanning."""
+    """
+    AD-4: Unfold's label (badge) helper. The words carry the meaning; color only helps scanning.
+
+    #46: someone with a standing note who hasn't responded gets a gray
+    Standing badge with their note beside it, since nothing is owed.
+    """
     if response.responded:
         return render_to_string('unfold/helpers/label.html', {'text': 'Responded', 'variant': 'success'})
+    if response.is_standing:
+        badge = render_to_string('unfold/helpers/label.html', {'text': 'Standing'})
+        return format_html('{}<span class="tracker-standing">{}</span>', badge, response.standing)
     return render_to_string('unfold/helpers/label.html', {'text': 'Not responded', 'variant': 'danger'})
 
 
@@ -75,19 +83,48 @@ def submitted_time(response):
     return date_filter(localtime(response.submission.submitted_at), TIME_FORMAT)
 
 
+def standing_line(response, alone=False):
+    """
+    #46: someone's standing availability note as By person shows it on
+    screen: upright, quiet text after a repeat icon (.answer-standing), so it
+    can't be confused with the team form's notes (italic, .answer-notes).
+    Screen readers hear "Standing: 3rd Sundays only". alone=True when it's
+    the whole cell (no answer above it), so it gets no gap above.
+    """
+    return format_html(
+        '<span class="answer-standing{}">'
+        '<span class="material-symbols-outlined" aria-hidden="true">event_repeat</span>'
+        '<span><span class="sr-only">Standing: </span>{}</span></span>',
+        ' answer-standing-alone' if alone else '',
+        response.standing,
+    )
+
+
 def answer_with_notes(response):
     """
     AD-5: the answer, with any notes on their own quieter line underneath.
 
+    #46: anyone with a standing note gets it on its own line (standing_line)
+    under the answer, whether or not they've responded, so Skye can spot an
+    answer that only partly overlaps it. A standing member who hasn't
+    responded shows only that line, since no response is owed. (The copy
+    text writes their note in parentheses instead; that's formatting.py.)
+    The team form's notes come last.
+
     Volunteers type the notes, so they're escaped (format_html, and
     linebreaksbr with autoescape), keeping their line breaks.
     """
+    if response.is_standing:
+        return standing_line(response, alone=True)
+    parts = [format_html('{}', response.answer)]
+    if response.standing:
+        parts.append(standing_line(response))
     notes = response.submission.notes if response.submission else ''
-    if not notes:
+    if notes:
+        parts.append(format_html('<span class="answer-notes">{}</span>', linebreaksbr(notes, autoescape=True)))
+    if len(parts) == 1:
         return response.answer
-    return format_html(
-        '{}<span class="answer-notes">{}</span>', response.answer, linebreaksbr(notes, autoescape=True)
-    )
+    return format_html_join('', '{}', ((part,) for part in parts))
 
 
 def copy_button_attrs(target, message):

@@ -44,6 +44,30 @@
       <label for="{{ form.member.id_for_label }}" class="mb-2 block font-medium">{{ form.member.label }}</label>
       {{ form.member }}
       {% for error in form.member.errors %}<p class="mt-2 font-medium text-red-700">{{ error }}</p>{% endfor %}
+
+      {% comment %}
+        TF-12 (#46): a reminder for people with a standing availability note
+        (e.g. "3rd Sundays only"), who don't need to submit unless it won't
+        work this month. Names with a note carry it in data-standing (forms.
+        MemberSelect); the script below fills in the note and shows the box
+        when such a name is picked or preselected. The outer div is a live
+        region that's always on the page, so screen readers announce the
+        reminder when it appears. Adapted from Tailwind Plus's blue info
+        alert (Feedback > Alerts).
+      {% endcomment %}
+      <div id="standing-reminder" role="status">
+        <div id="standing-box" class="mt-3 rounded-md bg-blue-50 p-4" hidden>
+          <div class="flex gap-3">
+            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="size-5 shrink-0 text-blue-400">
+              <path d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z" clip-rule="evenodd" fill-rule="evenodd" />
+            </svg>
+            <p class="text-base text-blue-700 sm:text-sm">
+              <strong class="font-semibold">Your standing availability:</strong> <span id="standing-text"></span>.<br>
+              You only need to fill this out if that won't work this month.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
 
     {# TF-3: which month? Closed months carry data-closed for the script below. #}
@@ -202,6 +226,20 @@
     const details = document.getElementById('form-details');
     const hint = document.getElementById('calendar-hint');
     const calendars = document.querySelectorAll('fieldset[data-month]');
+    const standingBox = document.getElementById('standing-box');
+    const standingText = document.getElementById('standing-text');
+
+    /**
+     * TF-12 (#46): show the standing-availability reminder if the chosen
+     * name has a note (data-standing on its option), or hide it if not.
+     * A trailing period is dropped because the sentence adds its own.
+     */
+    function showStanding() {
+      const option = memberSelect.selectedOptions[0];
+      const note = option ? (option.dataset.standing || '') : '';
+      standingText.textContent = note.trim().replace(/\.$/, '');
+      standingBox.hidden = !note.trim();
+    }
 
     /** Untick every day in one calendar. */
     function clearDays(calendar) {
@@ -341,6 +379,7 @@
       loadPrevious(true);
     });
     memberSelect.addEventListener('change', function () {
+      showStanding();
       loadPrevious(true);
     });
     kindSelect.addEventListener('change', applyKind);
@@ -351,6 +390,8 @@
     const serverSaidClosed = message.children.length > 0;
     showClosed(chosenMonthIsClosed() || serverSaidClosed);
     showCalendarFor(false);
+    // TF-11 may have preselected a name with a standing note.
+    showStanding();
     // After a failed submit, show the summary but keep the person's edits.
     loadPrevious(form.dataset.bound !== 'true');
   })();

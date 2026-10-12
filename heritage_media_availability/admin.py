@@ -156,7 +156,7 @@ class MemberAdmin(ModelAdmin):
     works too, with its Save button.
     """
 
-    list_display = ['name', 'status', 'created_at', 'action']
+    list_display = ['name', 'status', 'standing', 'created_at', 'action']
     # The Name column is the link to the edit page (row_link), so Django
     # doesn't add its own link to the first column as well.
     list_display_links = None
@@ -165,7 +165,7 @@ class MemberAdmin(ModelAdmin):
     list_filter_options = {'status': {'horizontal': True}}
     search_fields = ['first_name', 'last_name']
     # The edit page only needs the fields Skye can change; created_at is automatic.
-    fields = ['first_name', 'last_name', 'is_active']
+    fields = ['first_name', 'last_name', 'is_active', 'standing_availability']
 
     @admin.display(description='Name', ordering='first_name')
     def name(self, member):
@@ -180,6 +180,11 @@ class MemberAdmin(ModelAdmin):
     def status(self, member):
         """AD-2: Active (green) or Inactive (gray)."""
         return status_badge('Active', 'success') if member.is_active else status_badge('Inactive')
+
+    @admin.display(description='Standing', ordering='standing_availability')
+    def standing(self, member):
+        """#46: their standing availability ("3rd Sundays only"), or a dash, to see at a glance who has one."""
+        return member.standing_availability or '–'
 
     @admin.display(description='Action')
     def action(self, member):

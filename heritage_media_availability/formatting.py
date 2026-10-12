@@ -189,13 +189,21 @@ def by_person_text(responses):
 
         Bob: 3-7, 20
         Jim: NA
+        Grace: (3rd Sundays only)
         Tom: no response
 
     One line per active member, in MonthResponses.by_person order
-    (responders A–Z, then non-responders A–Z). Notes and inactive members
-    are never included (SPEC.md copy formats; decision 2026-10-03).
+    (responders, then standing, then non-responders, each A–Z). Notes and
+    inactive members are never included (SPEC.md copy formats; decision
+    2026-10-03). Someone with a standing note who hasn't responded gets
+    their note in parentheses instead of "no response" (#46), e.g.
+    "Grace: (3rd Sundays only)"; once they respond, only their answer shows.
     """
-    return '\n'.join(f'{response.name}: {answer_text(response.submission)}' for response in responses.by_person)
+    lines = []
+    for response in responses.by_person:
+        answer = f'({response.standing})' if response.is_standing else answer_text(response.submission)
+        lines.append(f'{response.name}: {answer}')
+    return '\n'.join(lines)
 
 
 def by_date_text(responses):

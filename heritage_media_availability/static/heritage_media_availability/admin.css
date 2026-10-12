@@ -126,6 +126,29 @@
   color: var(--color-font-subtle-light);
 }
 
+/* #46: someone's standing availability ("3rd Sundays only"). In the
+   tracker, beside the gray Standing badge. In By person, upright with a
+   repeat icon (under the answer, or alone if they haven't responded), so it can't be confused
+   with the team form's notes (italic, .answer-notes). */
+.tracker-standing {
+  margin-left: 0.5rem;
+  color: var(--color-font-subtle-light);
+}
+.answer-standing {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+  color: var(--color-font-subtle-light);
+}
+/* When it's the whole cell (no answer above it), no gap above. */
+.answer-standing-alone {
+  margin-top: 0;
+}
+.answer-standing .material-symbols-outlined {
+  font-size: 1rem;
+}
+
 /* AD-6: "Unavailable all month: Sam". A soft amber callout so it isn't
    missed (Skye's #34 feedback); amber reads as "note this" without looking
    like an error. Tailwind's amber 50/200/800 values. */

@@ -51,14 +51,17 @@ def days_ago(days):
     return timezone.now() - timedelta(days=days)
 
 
-def add_member(first_name, last_name, *, active=True, added_days_ago=90):
+def add_member(first_name, last_name, *, active=True, added_days_ago=90, standing=''):
     """
-    Add one person to the roster, as if added `added_days_ago` days ago.
+    Add one person to the roster, as if added `added_days_ago` days ago,
+    with an optional standing availability note (#46).
 
     created_at uses auto_now_add, which ignores any value passed to create(),
     so the date is set with a separate update() afterwards.
     """
-    member = Member.objects.create(first_name=first_name, last_name=last_name, is_active=active)
+    member = Member.objects.create(
+        first_name=first_name, last_name=last_name, is_active=active, standing_availability=standing,
+    )
     Member.objects.filter(pk=member.pk).update(created_at=days_ago(added_days_ago))
     return member
 
@@ -83,7 +86,9 @@ def load_roster():
     Bob Johnson as 'bob_johnson') for scenarios to add submissions to.
     """
     return {
-        'amy': add_member('Amy', 'Lee'),
+        # #46: Amy has a standing note but answers anyway (her answer, note and
+        # form notes all show in By person).
+        'amy': add_member('Amy', 'Lee', standing='1st and 3rd Sundays'),
         # Three Bobs: "Bob S.", plus Jones and Johnson, who share an initial
         # too and so show with full last names.
         'bob': add_member('Bob', 'Smith'),
@@ -91,7 +96,9 @@ def load_roster():
         'bob_johnson': add_member('Bob', 'Johnson'),
         # Typed in lowercase: should still sort as "Emily" (between Bob and Grace).
         'emily': add_member('emily', 'carter'),
-        'grace': add_member('Grace', 'Kim'),
+        # #46: Grace has a standing note and doesn't answer next month, so she
+        # shows as Standing, not counted, and "(3rd Sundays only)" in copy text.
+        'grace': add_member('Grace', 'Kim', standing='3rd Sundays only'),
         # Inactive. Henry responds in the dashboard scenario ("No longer active");
         # Ivy never does, so she should appear nowhere.
         'henry': add_member('Henry', 'Park', active=False),
