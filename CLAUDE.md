@@ -27,7 +27,7 @@ Every piece of work follows this loop. `gh` (GitHub CLI) is installed and authen
 
 ### Issues, milestones and labels
 
-- **Milestones** are the build weeks ("Week 2: Team form", "Week 3: Admin views", "Week 4: Pilot") plus "Post-launch". Every issue gets one.
+- **Milestones** are the build weeks ("Week 2: Team form", "Week 3: Admin views", "Week 4: Pilot"), then "Pilot and launch" (the pilot rounds and fixes before Oct 25) and "Post-launch". Every issue gets one.
 - **Area labels:** `team-form`, `admin`, `infra`, `documentation`. Type labels: `feature`, `bug`, `accessibility`.
 - An issue's **acceptance criteria** are a checklist of things you can see or a test can check. Tick them in the PR, not the issue.
 - Status lives in GitHub (open/closed issues, milestone progress), never in the docs.
@@ -70,6 +70,21 @@ Write good explanatory comments throughout. I'll be reading this code to learn f
 - Pushing to `main` by any route
 - Closing an issue any way other than merging its PR
 - Changing repo settings, deleting branches on GitHub, or editing milestones and labels beyond adding new ones I've agreed to
+- Creating a release or pushing a tag (see Releases)
+
+### Releases (#53)
+
+Releases name the meaningful points in the app's life, so there's a record of exactly what the pilot used, what launched, and what changed since. They're lightweight on purpose: Railway already deploys every merge, so a release adds a name and notes, not a deploy step.
+
+- **What a release is:** a git tag on a commit that's already on `main`, plus a GitHub Release page. Its notes are written by GitHub from the PRs merged since the previous release (`--generate-notes`), so there's no CHANGELOG file to keep up.
+- **When:** at meaningful points only, never for every merge.
+  - `v1.0.0-pilot`, a pre-release, when pilot round 1 starts (what the testers used).
+  - `v1.0.0` on launch day (Oct 25), on the commit the team first uses.
+  - After launch, one release per batch of work, e.g. when a milestone wraps up.
+- **Naming:** `vMAJOR.MINOR.PATCH`. A new MINOR (`v1.1.0`) for new features, a PATCH (`v1.0.1`) for a fix-only batch, and a new MAJOR only for a big change in how people use the app. A suffix like `-pilot` marks a pre-release.
+- **What it doesn't do:** a release never deploys, and it isn't how to roll back. To undo a bad deploy, redeploy an earlier deployment in the Railway dashboard (or fix forward with a new PR).
+- **Comparing:** `git diff v1.0.0-pilot..v1.0.0` shows everything that changed between two releases (run `git fetch --tags` first).
+- I suggest when a release is due and draft its title; creating it needs your approval, since it publishes a tag and page on GitHub.
 
 ### Conventions we've settled on
 
@@ -176,6 +191,9 @@ All commands load local settings from `.env` (copy `.env.example` first).
 - Create an issue: `gh issue create --template <feature.md|bug.md>` (or `--title`/`--body-file` with `--milestone` and `--label`)
 - Open a PR: `gh pr create --fill` then edit, or `--title`/`--body-file`
 - Production readiness check: `DEBUG=false uv run --env-file .env python manage.py check --deploy` (should report no issues)
+- Create the pilot pre-release (on the newest commit on `main`): `gh release create v1.0.0-pilot --prerelease --target main --generate-notes --title "Pilot"`
+- Create a release: `gh release create v1.0.0 --target main --generate-notes --title "Launch"` (title it after what it marks)
+- List releases: `gh release list`
 
 Deploying: pushing/merging to `main` deploys on Railway. `railway.json` (JSON, so it can't hold comments) tells Railway to:
 - build with Railpack, which installs exactly what's in `uv.lock` and uses `.python-version`;
