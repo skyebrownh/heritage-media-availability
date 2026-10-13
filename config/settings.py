@@ -290,6 +290,15 @@ UNFOLD = {
     # Our small plain-CSS file for what Unfold's stylesheet lacks (see its
     # comments). A function, because static() needs the app registry ready.
     'STYLES': [lambda request: static('heritage_media_availability/admin.css')],
+    # #37: the same browser tab icon as the team pages (built by branding/build.sh).
+    'SITE_FAVICONS': [
+        {
+            'rel': 'icon',
+            'sizes': '32x32',
+            'type': 'image/png',
+            'href': lambda request: static('heritage_media_availability/favicon-32.png'),
+        },
+    ],
     # The admin home page is Skye's availability dashboard (#40): this
     # function adds the month's data, and templates/admin/index.html shows it.
     'DASHBOARD_CALLBACK': 'heritage_media_availability.admin_dashboard.dashboard_callback',

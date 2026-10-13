@@ -1,0 +1,18 @@
+<!--
+  #37: the app icon for browser tabs (and the admin's tabs): a white calendar
+  with a check, on Tailwind's indigo-600 (#4f39f6) in a rounded square.
+  branding/build.sh turns this into static/heritage_media_availability/favicon-32.png.
+  Drawn on a 512 grid; keep shapes chunky so they still read at 32px.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#4f39f6"/>
+  <g fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Calendar body, with a filled header strip. -->
+    <rect x="112" y="148" width="288" height="264" rx="44" stroke-width="32"/>
+    <path d="M112 224 H400" stroke-width="32"/>
+    <!-- The two rings at the top. -->
+    <path d="M192 104 V172 M320 104 V172" stroke-width="36"/>
+    <!-- The check. -->
+    <path d="M190 312 L236 356 L322 268" stroke-width="36"/>
+  </g>
+</svg>
