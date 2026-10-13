@@ -2198,6 +2198,72 @@ class RememberNameTests(TestCase):
         self.assertTrue(self.submit(self.bob).cookies['remembered_member']['secure'])
 
 
+class LinkPreviewTests(TestCase):
+    """#37: the app icon, and the preview card chat apps show for the form's link."""
+
+    url = reverse('heritage_media_availability:team_form')
+    image_path = 'heritage_media_availability/link-preview.png'
+
+    def meta(self, html, prop):
+        """The content of <meta property="..."> (or name="..."), or None if it's missing."""
+        match = re.search(rf'<meta (?:property|name)="{re.escape(prop)}" content="([^"]*)">', html)
+        return match.group(1) if match else None
+
+    def get_as_railway(self, path=None):
+        """
+        A page as Railway delivers it: the proxy talks to the app over http
+        and sends X-Forwarded-Proto: https with the real host name.
+        """
+        with override_settings(ALLOWED_HOSTS=['heritage.example.org']):
+            return self.client.get(
+                path or self.url, headers={'host': 'heritage.example.org', 'x-forwarded-proto': 'https'}
+            ).content.decode()
+
+    def test_form_has_the_open_graph_tags(self):
+        html = self.client.get(self.url).content.decode()
+        self.assertEqual(self.meta(html, 'og:title'), 'Heritage Media Availability')
+        self.assertEqual(self.meta(html, 'og:description'), "Let the Scheduler know which days you can't serve.")
+        self.assertEqual(self.meta(html, 'description'), self.meta(html, 'og:description'))
+        self.assertEqual(self.meta(html, 'og:type'), 'website')
+        self.assertEqual(self.meta(html, 'og:image:width'), '1200')
+        self.assertEqual(self.meta(html, 'og:image:height'), '630')
+        self.assertTrue(self.meta(html, 'og:image:alt'))
+
+    def test_image_and_url_are_full_https_addresses_behind_the_proxy(self):
+        # Built from the request, so each site (production, staging) points at itself.
+        html = self.get_as_railway()
+        self.assertEqual(self.meta(html, 'og:image'), f'https://heritage.example.org/static/{self.image_path}')
+        self.assertEqual(self.meta(html, 'og:url'), 'https://heritage.example.org/')
+
+    def test_og_url_is_the_form_even_on_other_pages(self):
+        # The "form expired" page shares base.html; its preview still points at the form.
+        response = Client(enforce_csrf_checks=True).post(self.url, {})
+        self.assertEqual(self.meta(response.content.decode(), 'og:url'), 'http://testserver/')
+
+    @override_settings(STAGING=True)
+    def test_staging_title_says_test(self):
+        html = self.client.get(self.url).content.decode()
+        self.assertEqual(self.meta(html, 'og:title'), '[TEST] Heritage Media Availability')
+
+    def test_icons_are_linked_and_built(self):
+        html = self.client.get(self.url).content.decode()
+        self.assertIn('<link rel="icon" type="image/png" sizes="32x32" href="/static/heritage_media_availability/favicon-32.png">', html)
+        self.assertIn('<link rel="apple-touch-icon" sizes="180x180" href="/static/heritage_media_availability/apple-touch-icon.png">', html)
+        # The PNGs are committed in static/, so WhiteNoise can serve them.
+        for name in ['favicon-32.png', 'apple-touch-icon.png', 'link-preview.png']:
+            with self.subTest(name=name):
+                path = finders.find(f'heritage_media_availability/{name}')
+                self.assertIsNotNone(path)
+                self.assertTrue(Path(path).read_bytes().startswith(b'\x89PNG'))
+
+    def test_admin_tabs_use_the_same_icon(self):
+        self.client.force_login(get_user_model().objects.create_superuser('skye', password='test-pass-123'))
+        response = self.client.get(reverse('admin:heritage_media_availability_member_changelist'))
+        self.assertContains(response, 'href="/static/heritage_media_availability/favicon-32.png"')
+        # No link preview on admin pages.
+        self.assertNotContains(response, 'og:image')
+
+
 class PrebuiltCssTests(TestCase):
     """#33: team pages use the committed, pre-built Tailwind CSS, not the CDN."""
 

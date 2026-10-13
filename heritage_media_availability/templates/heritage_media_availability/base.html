@@ -3,7 +3,7 @@
   the "form expired" page). Pages fill in the "title" and "content" blocks.
   Design rules (CLAUDE.md): mobile first at 375px, Tailwind Plus defaults.
 {% endcomment %}
-{% load static %}
+{% load static link_preview %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -17,6 +17,35 @@
     building styles in the browser.
   {% endcomment %}
   <link rel="stylesheet" href="{% static 'heritage_media_availability/app.css' %}">
+
+  {% comment %}
+    #37: the app icon. favicon-32.png is the browser tab icon (rounded
+    corners built in); apple-touch-icon.png is used when someone adds the
+    form to an iPhone home screen (square, since iOS rounds it). Both are
+    built from branding/ by branding/build.sh.
+  {% endcomment %}
+  <link rel="icon" type="image/png" sizes="32x32" href="{% static 'heritage_media_availability/favicon-32.png' %}">
+  <link rel="apple-touch-icon" sizes="180x180" href="{% static 'heritage_media_availability/apple-touch-icon.png' %}">
+
+  {% comment %}
+    #37: the link preview, the card a chat app shows when the form's link is
+    posted (Open Graph tags, which iMessage, Facebook, WhatsApp and others
+    read). og:image and og:url must be full https:// addresses, since the
+    chat app fetches them itself; the link_preview tags build them from the
+    request. og:url always points at the form, the page being shared, even
+    on the thanks page. On the staging site the title starts with "[TEST]",
+    so a preview of the staging link says it's the test site (#45).
+  {% endcomment %}
+  <meta name="description" content="Let the Scheduler know which days you can't serve.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Heritage Media Availability">
+  <meta property="og:title" content="{% if is_staging %}[TEST] {% endif %}Heritage Media Availability">
+  <meta property="og:description" content="Let the Scheduler know which days you can't serve.">
+  <meta property="og:url" content="{% absolute_url 'heritage_media_availability:team_form' %}">
+  <meta property="og:image" content="{% absolute_static 'heritage_media_availability/link-preview.png' %}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="A white calendar with a check mark, next to the words Heritage Media Availability.">
 </head>
 {% comment %}
   #41: Tailwind Plus's gray page behind a white card. Text is 16px at every

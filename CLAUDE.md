@@ -128,7 +128,8 @@ Formats and routines for each step of the loop above. Recent issues and PRs (e.g
 - Skye's availability dashboard is the admin home page (#40): `heritage_media_availability/admin_dashboard.py` (`UNFOLD["DASHBOARD_CALLBACK"]`) prepares the data, and `templates/admin/index.html` draws it with Unfold components. The dashboard's own styles are in `static/heritage_media_availability/admin.css`.
 - `INSTALLED_APPS` order matters for templates: our app, then `unfold` and `unfold.contrib.filters` (Unfold's list filters, part of the same package), then `django.contrib.admin` (reasons in `config/settings.py`).
 - `DATABASE_URL` is parsed with the standard library (`config/env.py`), not dj-database-url. Local `.env` is loaded with `uv run --env-file .env`, not python-dotenv.
-- Static files use WhiteNoise's `CompressedStaticFilesStorage` (no filename hashing), so tests don't need `collectstatic` first. Static files are the admin's, Unfold's (CSS, fonts, scripts, all self-hosted), plus our built `app.css`.
+- Static files use WhiteNoise's `CompressedStaticFilesStorage` (no filename hashing), so tests don't need `collectstatic` first. Static files are the admin's, Unfold's (CSS, fonts, scripts, all self-hosted), plus our built `app.css` and the icon and link-preview PNGs.
+- The app icon and link preview image (#37) are drawn as SVGs in `branding/` (not served) and turned into PNGs in `static/heritage_media_availability/` by `branding/build.sh`, which uses macOS's built-in `sips`. Commit the PNGs with the SVG change. The team pages' Open Graph tags are in `base.html`; `og:image` and `og:url` are built from the request (`templatetags/link_preview.py`), never a hard-coded domain.
 - `check --deploy` warnings mail.E001, security.W005 and security.W021 are silenced on purpose (reasons in `config/settings.py`). Revisit if we add a custom domain.
 
 ### Secrets and security
@@ -170,6 +171,7 @@ All commands load local settings from `.env` (copy `.env.example` first).
 - Reset local data to a test scenario: `uv run --env-file .env python manage.py seed <scenario>` (`seed --list` shows them). Deletes all members, submissions and closed months first; keeps admin accounts. Refuses unless `DEBUG` is on and the database is local.
 - Get the Tailwind CLI (once per machine; `bin/` is git-ignored): `mkdir -p bin && curl -sSL -o bin/tailwindcss https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.3/tailwindcss-macos-arm64 && chmod +x bin/tailwindcss`
 - Build the CSS (after changing template classes or `tailwind/input.css`): `bin/tailwindcss -i tailwind/input.css -o heritage_media_availability/static/heritage_media_availability/app.css --minify` (add `--watch` to rebuild on save while developing)
+- Rebuild the icon and link preview PNGs (after changing an SVG in `branding/`): `sh branding/build.sh`
 - Make migrations after changing models: `uv run --env-file .env python manage.py makemigrations`
 - Create an issue: `gh issue create --template <feature.md|bug.md>` (or `--title`/`--body-file` with `--milestone` and `--label`)
 - Open a PR: `gh pr create --fill` then edit, or `--title`/`--body-file`

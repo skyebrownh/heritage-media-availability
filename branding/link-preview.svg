@@ -1,0 +1,32 @@
+<!--
+  #37: the link preview image (og:image), shown when the form's link is
+  posted in a group chat. 1200x630 is the size iMessage, Facebook and others
+  expect. Indigo-600 background, the app icon on the left, and the app's
+  name and tagline in white. branding/build.sh turns this into
+  static/heritage_media_availability/link-preview.png.
+  The icon is icon.svg's drawing, scaled down, on a lighter indigo-500
+  square (#615fff) so it stands out from the background.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#4f39f6"/>
+  <g transform="translate(96 175) scale(0.546875)">
+    <rect width="512" height="512" rx="112" fill="#615fff"/>
+    <g fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="112" y="148" width="288" height="264" rx="44" stroke-width="32"/>
+      <path d="M112 224 H400" stroke-width="32"/>
+      <path d="M192 104 V172 M320 104 V172" stroke-width="36"/>
+      <path d="M190 312 L236 356 L322 268" stroke-width="36"/>
+    </g>
+  </g>
+  <!--
+    Fonts: sips draws with the Mac's own fonts. "Helvetica Neue" at weight
+    600 comes out as its regular Bold; 700 picks a condensed black weight.
+  -->
+  <g font-family="Helvetica Neue" fill="#ffffff">
+    <text x="440" y="262" font-size="76" font-weight="600">Heritage Media</text>
+    <text x="440" y="350" font-size="76" font-weight="600">Availability</text>
+    <!-- Tagline in indigo-100 (#e0e7ff), a softer white. -->
+    <text x="440" y="430" font-size="36" fill="#e0e7ff">Let the Scheduler know which</text>
+    <text x="440" y="478" font-size="36" fill="#e0e7ff">days you can't serve.</text>
+  </g>
+</svg>

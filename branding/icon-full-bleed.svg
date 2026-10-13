@@ -1,0 +1,18 @@
+<!--
+  #37: the iPhone home-screen icon: the same design as icon.svg, but filling
+  the whole square, because iOS rounds the corners itself.
+  branding/build.sh turns this into static/heritage_media_availability/apple-touch-icon.png (180x180).
+  Keep the drawing in step with icon.svg.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#4f39f6"/>
+  <g fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Calendar body, with a filled header strip. -->
+    <rect x="112" y="148" width="288" height="264" rx="44" stroke-width="32"/>
+    <path d="M112 224 H400" stroke-width="32"/>
+    <!-- The two rings at the top. -->
+    <path d="M192 104 V172 M320 104 V172" stroke-width="36"/>
+    <!-- The check. -->
+    <path d="M190 312 L236 356 L322 268" stroke-width="36"/>
+  </g>
+</svg>
