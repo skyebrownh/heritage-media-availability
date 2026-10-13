@@ -186,7 +186,7 @@ Deploying: pushing/merging to `main` deploys on Railway. `railway.json` (JSON, s
 
 ### Staging (#45)
 
-A second copy of the app on Railway, the `staging` environment, with its own Postgres and address (`https://heritage-media-availability-staging.up.railway.app`). Testers use it so nothing they enter touches real data.
+A second copy of the app on Railway, the `staging` environment, with its own Postgres and address (`https://heritage-media-availability-staging.up.railway.app`). Testers use it so nothing they enter touches real data. The pilot's runbook (rounds, tester steps, Skye's checklist) is [PILOT.md](PILOT.md) (#54).
 
 - It deploys automatically from `main`, like production, so it always runs the live code. There's no staging branch, and PRs still only target `main`.
 - Its variables are set in Railway (its own `SECRET_KEY`, `DEBUG=false`, `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` for its address, its own `DATABASE_URL`), plus `STAGING=true`, which shows a "Test site" banner on every page and lets `seed` and `load_snapshot` run there.
