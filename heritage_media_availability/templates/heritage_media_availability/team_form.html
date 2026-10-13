@@ -157,15 +157,43 @@
         </div>
       </div>
 
-      {# TF-6: the all-month choice sits above the calendar. #}
-      <div>
-        <label for="{{ form.kind.id_for_label }}" class="block font-medium text-gray-900">{{ form.kind.label }}</label>
-        <div class="mt-2 grid grid-cols-1">
-          {{ form.kind }}
-          {% include "heritage_media_availability/_select_chevron.html" %}
+      {% comment %}
+        TF-6 (#36): the availability choice, above the calendar, as three
+        choice cards adapted from Tailwind Plus's "stacked cards" radio group,
+        so the chosen one is always visible. Each card is a <label> wrapping
+        its radio button (the radio is invisible and covers the whole card,
+        forms.RADIO_CARD_CLASSES), so a tap anywhere picks it and the card's
+        words are the radio's name for screen readers. A fieldset and legend
+        group the three, and arrow keys move between them.
+
+        The chosen card gets an indigo outline, a light indigo background and
+        an indigo check on the right (has-checked:), so it isn't shown by
+        color alone. The icon on the left says what each choice means: a
+        calendar, a green check, or a rose cross.
+      {% endcomment %}
+      <fieldset id="kind-choices">
+        <legend class="font-medium text-gray-900">{{ form.kind.label }}</legend>
+        <div class="mt-2 space-y-3">
+          {% for choice in form.kind %}
+          <label class="group/card relative flex items-center gap-3 rounded-lg border border-gray-300 bg-white px-4 py-3
+                        has-checked:bg-indigo-50 has-checked:outline-2 has-checked:-outline-offset-2 has-checked:outline-indigo-600
+                        has-focus-visible:outline-3 has-focus-visible:-outline-offset-1">
+            {{ choice.tag }}
+            {% if choice.data.value == "available_all" %}
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="size-5 shrink-0 text-green-600"><path d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm3.857-9.809a.75.75 0 0 0-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 1 0-1.06 1.061l2.5 2.5a.75.75 0 0 0 1.137-.089l4-5.5Z" clip-rule="evenodd" fill-rule="evenodd" /></svg>
+            {% elif choice.data.value == "unavailable_all" %}
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="size-5 shrink-0 text-rose-600"><path d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM8.28 7.22a.75.75 0 0 0-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 1 0 1.06 1.06L10 11.06l1.72 1.72a.75.75 0 1 0 1.06-1.06L11.06 10l1.72-1.72a.75.75 0 0 0-1.06-1.06L10 8.94 8.28 7.22Z" clip-rule="evenodd" fill-rule="evenodd" /></svg>
+            {% else %}
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="size-5 shrink-0 text-gray-500"><path d="M5.75 2a.75.75 0 0 1 .75.75V4h7V2.75a.75.75 0 0 1 1.5 0V4h.25A2.75 2.75 0 0 1 18 6.75v8.5A2.75 2.75 0 0 1 15.25 18H4.75A2.75 2.75 0 0 1 2 15.25v-8.5A2.75 2.75 0 0 1 4.75 4H5V2.75A.75.75 0 0 1 5.75 2Zm-1 5.5c-.69 0-1.25.56-1.25 1.25v6.5c0 .69.56 1.25 1.25 1.25h10.5c.69 0 1.25-.56 1.25-1.25v-6.5c0-.69-.56-1.25-1.25-1.25H4.75Z" clip-rule="evenodd" fill-rule="evenodd" /></svg>
+            {% endif %}
+            <span class="flex-1 font-medium text-gray-900">{{ choice.choice_label }}</span>
+            {# The "chosen" check, only drawn on the chosen card. #}
+            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="invisible size-5 shrink-0 text-indigo-600 group-has-checked/card:visible"><path d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm3.857-9.809a.75.75 0 0 0-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 1 0-1.06 1.061l2.5 2.5a.75.75 0 0 0 1.137-.089l4-5.5Z" clip-rule="evenodd" fill-rule="evenodd" /></svg>
+          </label>
+          {% endfor %}
         </div>
         {% for error in form.kind.errors %}<p class="mt-2 text-red-600">{{ error }}</p>{% endfor %}
-      </div>
+      </fieldset>
 
       {# Day problems (none picked, or a day the month doesn't have) show above the calendar. #}
       {% for error in form.days.errors %}<p class="text-red-600">{{ error }}</p>{% endfor %}
@@ -184,12 +212,10 @@
         built-in keyboard (Tab, Space) and screen-reader support.
       {% endcomment %}
       {% for calendar in form.calendars %}
-      <fieldset data-month="{{ calendar.month }}" hidden disabled class="group">
+      {# data-month-name ("November") fills in the all-month panel below (#36). #}
+      <fieldset data-month="{{ calendar.month }}" data-month-name="{{ calendar.name }}" hidden disabled>
         <legend class="font-medium text-gray-900">Which days can't you serve?</legend>
         <p class="mt-1 text-gray-600">{{ calendar.label }} · tap each day you're out.</p>
-
-        {# Shown by the script while an all-month option is chosen (TF-6). #}
-        <p data-kind-note hidden class="mt-1 text-gray-600">Calendar not needed for this choice.</p>
 
         {% comment %}
           #41: adapted from Tailwind Plus's small calendar (Data Display >
@@ -216,15 +242,12 @@
                        {% if day.day in calendar.checked %}checked{% endif %}>
                 {% comment %}
                   The tappable day. peer-focus-visible: draws the keyboard
-                  focus outline. group-disabled: grays out the days while the
-                  fieldset is disabled (all-month option chosen, TF-6).
-                  hover: only applies on devices with a mouse, so a tapped
+                  focus outline. hover: only applies on devices with a mouse, so a tapped
                   day on a phone doesn't stay highlighted.
                 {% endcomment %}
                 <label for="day-{{ calendar.month }}-{{ day.day }}"
                        class="flex cursor-pointer select-none bg-white py-1.5 text-gray-900 hover:bg-gray-100
-                              peer-focus-visible:outline-2 peer-focus-visible:-outline-offset-2 peer-focus-visible:outline-indigo-600
-                              group-disabled:cursor-not-allowed group-disabled:bg-gray-50 group-disabled:text-gray-400">
+                              peer-focus-visible:outline-2 peer-focus-visible:-outline-offset-2 peer-focus-visible:outline-indigo-600">
                   {% comment %}
                     The number in its circle. A ticked day becomes a solid
                     indigo circle with a bold white number: a change of fill
@@ -245,6 +268,43 @@
         </div>
       </fieldset>
       {% endfor %}
+
+      {% comment %}
+        TF-6 (#36): with an all-month choice, the calendar is hidden and this
+        panel says what was chosen in its place, e.g. "You're available all
+        of November." The script copies in the matching <template> below and
+        fills in the month's name. role="status" makes screen readers read it
+        out when it appears (content added, as with the closed-month box).
+        Adapted from Tailwind Plus's alerts: green for available; rose, not
+        red, for unavailable, so it doesn't look like the red error alert.
+      {% endcomment %}
+      <div id="all-month-message" role="status"></div>
+      <template id="all-month-available_all">
+        <div class="rounded-md bg-green-50 p-4">
+          <div class="flex">
+            <div class="shrink-0">
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="size-5 text-green-400"><path d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm3.857-9.809a.75.75 0 0 0-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 1 0-1.06 1.061l2.5 2.5a.75.75 0 0 0 1.137-.089l4-5.5Z" clip-rule="evenodd" fill-rule="evenodd" /></svg>
+            </div>
+            <div class="ml-3">
+              <p class="font-medium text-green-800">You're available all of <span data-month-name></span>.</p>
+              <p class="mt-1 text-green-700">No days to pick.</p>
+            </div>
+          </div>
+        </div>
+      </template>
+      <template id="all-month-unavailable_all">
+        <div class="rounded-md bg-rose-50 p-4">
+          <div class="flex">
+            <div class="shrink-0">
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="size-5 text-rose-400"><path d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM8.28 7.22a.75.75 0 0 0-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 1 0 1.06 1.06L10 11.06l1.72 1.72a.75.75 0 1 0 1.06-1.06L11.06 10l1.72-1.72a.75.75 0 0 0-1.06-1.06L10 8.94 8.28 7.22Z" clip-rule="evenodd" fill-rule="evenodd" /></svg>
+            </div>
+            <div class="ml-3">
+              <p class="font-medium text-rose-800">You're unavailable all of <span data-month-name></span>.</p>
+              <p class="mt-1 text-rose-700">No days to pick.</p>
+            </div>
+          </div>
+        </div>
+      </template>
 
       {# TF-7: optional notes; maxlength="500" comes from the form field. #}
       <div>
@@ -272,15 +332,19 @@
    *
    * - TF-4: a closed month hides the details and shows the "finalized" box.
    * - TF-5: only the chosen month's calendar is shown and enabled.
-   * - TF-6: an all-month option clears and disables the calendar;
-   *   "Pick specific days" re-enables it.
+   * - TF-6: an all-month option clears, disables and hides the calendar,
+   *   showing a panel that says what was chosen; "Pick specific days"
+   *   brings the calendar back (#36).
    * - TF-9: with a name and an open month chosen, look up the person's
    *   current submission and pre-fill the form with it.
    */
   (function () {
     const monthSelect = document.getElementById('{{ form.month.id_for_label }}');
-    const kindSelect = document.getElementById('{{ form.kind.id_for_label }}');
     const form = monthSelect.form;
+    // TF-6 (#36): the three choice cards. Their radios share name="kind", so
+    // this one list's .value reads (and sets) whichever is checked.
+    const kindChoices = form.elements.namedItem('kind');
+    const allMonthMessage = document.getElementById('all-month-message');
     const memberSelect = document.getElementById('{{ form.member.id_for_label }}');
     const notesBox = document.getElementById('{{ form.notes.id_for_label }}');
     const previousBox = document.getElementById('previous-box');
@@ -331,17 +395,33 @@
     }
 
     /**
-     * TF-6: apply the all-month choice to the visible calendar.
-     * Disabling the fieldset greys it out (group-disabled styles) and
-     * keeps its days from being submitted.
+     * TF-6 (#36): apply the availability choice to the chosen month.
+     * An all-month choice clears and hides the calendar (disabled, so its
+     * days can't be submitted) and shows the matching panel instead.
+     * The panel is only replaced when it would change, so screen readers
+     * don't hear the same message again (e.g. when the name changes).
      */
     function applyKind() {
       const calendar = activeCalendar();
-      if (!calendar) return;
-      const pickingDays = kindSelect.value === 'days';
-      if (!pickingDays) clearDays(calendar);
-      calendar.disabled = !pickingDays;
-      calendar.querySelector('[data-kind-note]').hidden = pickingDays;
+      const kind = kindChoices.value;
+      const pickingDays = kind === 'days';
+      if (calendar) {
+        if (!pickingDays) clearDays(calendar);
+        calendar.disabled = !pickingDays;
+        calendar.hidden = !pickingDays;
+      }
+
+      // Which panel should show, e.g. "available_all 2026-11", or none.
+      const wanted = calendar && !pickingDays ? kind + ' ' + calendar.dataset.month : '';
+      if (allMonthMessage.dataset.showing === wanted) return;
+      allMonthMessage.dataset.showing = wanted;
+      if (!wanted) {
+        allMonthMessage.replaceChildren();
+        return;
+      }
+      const panel = document.getElementById('all-month-' + kind).content.cloneNode(true);
+      panel.querySelector('[data-month-name]').textContent = calendar.dataset.monthName;
+      allMonthMessage.replaceChildren(panel);
     }
 
     /** True if the month picked in the dropdown is marked closed. */
@@ -385,7 +465,7 @@
 
     /** Put the form back to its starting state: specific days, nothing ticked, no notes. */
     function resetToBlank() {
-      kindSelect.value = 'days';
+      kindChoices.value = 'days';
       const calendar = activeCalendar();
       if (calendar) clearDays(calendar);
       notesBox.value = '';
@@ -394,7 +474,7 @@
 
     /** TF-9: copy an earlier submission into the form so only changes need making. */
     function fillFrom(previous) {
-      kindSelect.value = previous.kind;
+      kindChoices.value = previous.kind;
       applyKind();
       const calendar = activeCalendar();
       if (calendar) {
@@ -457,7 +537,8 @@
       showStanding();
       loadPrevious(true);
     });
-    kindSelect.addEventListener('change', applyKind);
+    // A change on any of the three radios bubbles up to their fieldset.
+    document.getElementById('kind-choices').addEventListener('change', applyKind);
 
     // On page load, set everything up for the current choices. The server
     // may already have shown the closed message (a stale tab's submit was

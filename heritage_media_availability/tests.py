@@ -138,12 +138,44 @@ class TeamFormDetailsTests(TestCase):
         self.assertIsNotNone(match, f'No calendar for {month}')
         return match.group(0)
 
-    def test_kind_dropdown_options_and_default(self):
-        # TF-6: three options, "Pick specific days" chosen by default.
-        response = self.get()
-        self.assertContains(response, '<option value="days" selected>Pick specific days</option>', html=True)
-        self.assertContains(response, '<option value="available_all">I&#x27;m available all month</option>', html=True)
-        self.assertContains(response, '<option value="unavailable_all">I&#x27;m unavailable all month</option>', html=True)
+    def kind_radios(self, html):
+        """The availability choice's radio buttons, as {value: <input> tag}."""
+        tags = re.findall(r'<input type="radio" name="kind"[^>]*>', html)
+        return {re.search(r'value="([^"]*)"', tag).group(1): tag for tag in tags}
+
+    def test_kind_choice_cards_and_default(self):
+        # TF-6 (#36): three choice cards (radio buttons, in this order), with
+        # "Pick specific days" chosen by default, inside a labelled fieldset.
+        html = self.get().content.decode()
+        radios = self.kind_radios(html)
+        self.assertEqual(list(radios), ['days', 'available_all', 'unavailable_all'])
+        self.assertIn('checked', radios['days'])
+        self.assertNotIn('checked', radios['available_all'])
+        self.assertNotIn('checked', radios['unavailable_all'])
+        self.assertNotIn('<select name="kind"', html)
+        self.assertRegex(html, r'<fieldset id="kind-choices">\s*<legend[^>]*>Your availability</legend>')
+        for label in ['Pick specific days', 'I&#x27;m available all month', 'I&#x27;m unavailable all month']:
+            with self.subTest(label=label):
+                self.assertIn(f'<span class="flex-1 font-medium text-gray-900">{label}</span>', html)
+
+    def test_all_month_panel_is_ready_for_the_script(self):
+        # TF-6 (#36): an empty live region for the all-month panel, both
+        # panels' templates, and each calendar's month name to fill in.
+        html = self.get().content.decode()
+        self.assertIn('<div id="all-month-message" role="status"></div>', html)
+        self.assertIn('<template id="all-month-available_all">', html)
+        self.assertIn('<template id="all-month-unavailable_all">', html)
+        self.assertIn("You're available all of <span data-month-name></span>.", html.replace('&#x27;', "'"))
+        self.assertIn('data-month="2026-11" data-month-name="November"', html)
+        self.assertNotIn('Calendar not needed', html)
+
+    def test_failed_submit_keeps_the_all_month_choice(self):
+        # A failed submit (no name) shows the form again with the same card chosen.
+        with at_utc(2026, 10, 1, 12, 0):
+            html = self.client.post(self.url, {'member': '', 'month': '2026-11', 'kind': 'unavailable_all'}).content.decode()
+        radios = self.kind_radios(html)
+        self.assertIn('checked', radios['unavailable_all'])
+        self.assertNotIn('checked', radios['days'])
 
     def test_notes_are_optional_and_capped_at_500(self):
         # TF-7. The help text is linked to the box for screen readers.
@@ -156,7 +188,7 @@ class TeamFormDetailsTests(TestCase):
     def test_one_calendar_per_month_all_starting_disabled(self):
         # The script enables only the chosen month's calendar, so none submit until then.
         html = self.get().content.decode()
-        fieldsets = re.findall(r'<fieldset [^>]*>', html)
+        fieldsets = re.findall(r'<fieldset data-month[^>]*>', html)
         self.assertEqual(len(fieldsets), 7)
         for tag in fieldsets:
             self.assertIn('hidden', tag)

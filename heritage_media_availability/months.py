@@ -42,6 +42,11 @@ def month_label(month):
     return f'{calendar.month_name[number]} {year}'
 
 
+def month_name(month):
+    """Just the month's name: "2026-11" → "November"."""
+    return calendar.month_name[split_month(month)[1]]
+
+
 def days_in_month(month):
     """Number of days in a month, e.g. 30 for "2026-11" and 29 for "2028-02"."""
     year, number = split_month(month)

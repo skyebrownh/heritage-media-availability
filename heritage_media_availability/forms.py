@@ -11,7 +11,7 @@ from django import forms
 from django.core.exceptions import ValidationError
 
 from .models import ClosedMonth, Member, Submission
-from .months import month_label, month_weeks, upcoming_months
+from .months import month_label, month_name, month_weeks, upcoming_months
 
 # #41: the dropdowns' look, from Tailwind Plus's "simple native" select menu.
 # appearance-none hides the browser's own arrow; the template draws the
@@ -44,6 +44,15 @@ TEXTAREA_CLASSES = (
     'outline-1 -outline-offset-1 outline-gray-300 '
     'focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600'
 )
+
+
+# #36: each "Your availability" choice card's radio button, from Tailwind
+# Plus's "stacked cards" radio group. The radio is invisible
+# (appearance-none) and stretched over its whole card (absolute inset-0), so
+# a tap anywhere on the card picks it, while it stays a real radio for the
+# keyboard (arrow keys) and screen readers. The card itself is drawn in
+# team_form.html and styles itself from the radio (has-checked:).
+RADIO_CARD_CLASSES = 'absolute inset-0 cursor-pointer appearance-none focus:outline-none'
 
 
 # TF-4: shown when a month is closed, both by the page script (as soon as the
@@ -166,7 +175,9 @@ class TeamForm(forms.ModelForm):
     )
 
     # TF-6: the three answers, worded for the team. The stored values match
-    # Submission.Kind. "Pick specific days" is the default.
+    # Submission.Kind. "Pick specific days" is the default. #36: shown as
+    # three choice cards (radio buttons) rather than a dropdown, so the
+    # chosen one is always visible.
     kind = forms.ChoiceField(
         label='Your availability',
         choices=[
@@ -175,7 +186,7 @@ class TeamForm(forms.ModelForm):
             (Submission.Kind.UNAVAILABLE_ALL, "I'm unavailable all month"),
         ],
         initial=Submission.Kind.DAYS,
-        widget=forms.Select(attrs={'class': SELECT_CLASSES}),
+        widget=forms.RadioSelect(attrs={'class': RADIO_CARD_CLASSES}),
     )
     # TF-5: day numbers ticked on the calendar. The template draws the
     # calendar itself (one per month), so this field only defines what's
@@ -268,6 +279,8 @@ class TeamForm(forms.ModelForm):
             {
                 'month': month,
                 'label': month_label(month),
+                # #36: for the all-month panel, "You're available all of November."
+                'name': month_name(month),
                 'weeks': month_weeks(month),
                 'checked': checked if month == submitted_month else set(),
             }
