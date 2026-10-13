@@ -1210,10 +1210,20 @@ class SubmissionAdminTests(TestCase):
         self.assertContains(response, 'November 2026')
         self.assertContains(response, '3, 20')
 
+    def column(self, html, field):
+        """The text of every row's cell in one list column (e.g. "day_list"), top to bottom."""
+        return re.findall(rf'<td class="field-{field}[^"]*">\s*([^<]*?)\s*</td>', html)
+
     def test_month_filter_beside_search(self):
         # #42: a month dropdown, newest first, that narrows the list.
+        # #56: both rows were submitted on Oct 13, so "Oct. 13, 2026" is on
+        # the page. Checking the whole page for "3, 20" (November's days)
+        # wrongly matched that date, so the filtered rows are checked by
+        # their own cells instead.
         bob = Member.objects.get(first_name='Bob')
-        Submission.objects.create(member=bob, month='2026-12', kind='available_all')
+        oct_13 = datetime(2026, 10, 13, 16, 0, tzinfo=UTC)
+        Submission.objects.filter(pk=self.submission.pk).update(submitted_at=oct_13)
+        Submission.objects.create(member=bob, month='2026-12', kind='available_all', submitted_at=oct_13)
         url = reverse('admin:heritage_media_availability_submission_changelist')
         html = self.client.get(url).content.decode()
         select = re.search(r'(?s)<select[^>]*name="month".*?</select>', html).group(0)
@@ -1221,9 +1231,12 @@ class SubmissionAdminTests(TestCase):
             re.findall(r'<option value="(\d{4}-\d{2})"[^>]*>\s*([^<]*?)\s*</option>', select),
             [('2026-12', 'December 2026'), ('2026-11', 'November 2026')],
         )
-        response = self.client.get(url, {'month': '2026-12'})
-        self.assertContains(response, 'December 2026')
-        self.assertNotContains(response, '3, 20')
+        self.assertEqual(self.column(html, 'day_list'), ['–', '3, 20'])  # sanity check: both rows, unfiltered
+
+        filtered = self.client.get(url, {'month': '2026-12'}).content.decode()
+        self.assertIn('Oct. 13, 2026', filtered)  # the date that used to trip this test
+        self.assertEqual(self.column(filtered, 'month_name'), ['December 2026'])
+        self.assertEqual(self.column(filtered, 'day_list'), ['–'])
 
     def test_history_cannot_be_added_edited_or_deleted(self):
         pk = self.submission.pk
