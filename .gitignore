@@ -20,3 +20,9 @@ bin/
 # A copy of production's data, made to refresh staging (#45). Real names and
 # availability: never commit it, and delete it after loading.
 production-snapshot.json
+
+# Database backups (#3) live in ~/Backups/heritage-media-availability/, never
+# here. This is a safety net in case one is ever copied into the repo: they
+# hold real names and the admin's hashed password.
+*.sql
+*.sql.gz
