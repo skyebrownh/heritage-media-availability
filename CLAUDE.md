@@ -200,6 +200,7 @@ Deploying: pushing/merging to `main` deploys on Railway. `railway.json` (JSON, s
 - run `python manage.py migrate` before each deploy (a failed migration cancels the deploy, and the old version keeps running);
 - start with `migrate --check` (fails the deploy if any migration wasn't applied), then `collectstatic`, then `gunicorn config.wsgi` (gunicorn options live in `gunicorn.conf.py`).
 - The pre-deploy command is also set in the Railway dashboard (Settings → Deploy → Pre-deploy Command), because the first deploy didn't pick it up from `railway.json`.
+- Railway checks `/healthz/` on each new deploy and only switches visitors over once it answers `ok`; otherwise the deploy fails and the old version keeps running (#60). It's set in the dashboard (Settings → Deploy → Healthcheck Path) on both production and staging, not in `railway.json`. The `health_check` middleware answers it first in `MIDDLEWARE`, before the HTTPS redirect and host check, because Railway's checker uses plain HTTP and `Host: healthcheck.railway.app`. Don't add that host to `ALLOWED_HOSTS`: staging's `seed` and `load_snapshot` need every allowed host to contain "staging".
 - `railway.json` stops being read on 2026-12-01; the migration is tracked as a Post-launch issue.
 
 ### Staging (#45)
