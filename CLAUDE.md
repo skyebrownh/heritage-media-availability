@@ -189,6 +189,7 @@ All commands load local settings from `.env` (copy `.env.example` first).
 - Build the CSS (after changing template classes or `tailwind/input.css`): `bin/tailwindcss -i tailwind/input.css -o heritage_media_availability/static/heritage_media_availability/app.css --minify` (add `--watch` to rebuild on save while developing)
 - Rebuild the icon and link preview PNGs (after changing an SVG in `branding/`): `sh branding/build.sh`
 - Backups (#3): install or update the weekly job with `bash backup/install.sh` (`--uninstall` stops it); check on it with `~/Backups/heritage-media-availability/backup.sh status`; back up now with `~/Backups/heritage-media-availability/backup.sh now`. Practice restore steps are in README's Backups section. Before running anything against production, check with Skye.
+- Pilot feedback (#67): in Claude Code, `/pilot-feedback round <1|2> <pasted notes>` turns a tester's notes into draft bug or feature issues, "won't do" items with reasons, duplicates of existing issues, or questions, following PILOT.md. It creates nothing until I approve; "won't do" items reach PILOT.md through their own documentation issue. Only I start it (`disable-model-invocation`). The skill is `.claude/skills/pilot-feedback/SKILL.md`.
 - Make migrations after changing models: `uv run --env-file .env python manage.py makemigrations`
 - Create an issue: `gh issue create --template <feature.md|bug.md>` (or `--title`/`--body-file` with `--milestone` and `--label`)
 - Open a PR: `gh pr create --fill` then edit, or `--title`/`--body-file`

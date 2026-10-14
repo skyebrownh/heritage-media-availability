@@ -63,14 +63,14 @@ Two parts.
 
 ### After round 1
 
-- [ ] Each piece of feedback becomes an issue on the "Pilot and launch" milestone (bug or feature), or is noted as "won't do" with a reason.
+- [ ] Run `/pilot-feedback round 1` in Claude Code with your notes. Each piece of feedback becomes an issue on the "Pilot and launch" milestone (bug or feature), or a "won't do" with a reason, recorded in [Pilot feedback: won't do](#pilot-feedback-wont-do) through its own documentation issue.
 - [ ] Fix anything you wouldn't want the lead to see before round 2.
 - [ ] Don't refresh staging between rounds. The tester's answers make the dashboard walkthrough look like a real month.
 
 ### Round 2
 
 - [ ] Send the round 2 email, and set up the walkthrough.
-- [ ] Note his answers to the three questions. Anything he asks for becomes an issue (on "Pilot and launch" if it's needed before launch, otherwise "Post-launch").
+- [ ] Note his answers to the three questions, then run `/pilot-feedback round 2` with them. Anything he asks for becomes an issue (on "Pilot and launch" if it's needed before launch, otherwise "Post-launch"), or a "won't do" recorded in [Pilot feedback: won't do](#pilot-feedback-wont-do).
 
 ### Launch day (October 25)
 
@@ -80,3 +80,10 @@ Two parts.
 - [ ] Create the `v1.0.0` release (CLAUDE.md, Releases).
 - [ ] Post the **production** link in the group chat with a short "how to" message, and check that its preview card shows.
 - [ ] From then on, problems found on production become new issues.
+
+## Pilot feedback: won't do
+
+Feedback from the pilot that was decided against, with the reason, so the decision isn't reopened by accident. `/pilot-feedback` suggests these; each round's approved items are added here by a documentation issue (#67), never directly. Testers aren't named.
+
+| Round | Feedback | Reason | Date |
+| --- | --- | --- | --- |
