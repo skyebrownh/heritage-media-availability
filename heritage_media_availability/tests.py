@@ -24,10 +24,11 @@ from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.core.management import CommandError, call_command
 from django.db import IntegrityError, connection, transaction
 from django.db.models import ProtectedError
-from django.test import Client, SimpleTestCase, TestCase, override_settings
+from django.test import Client, RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.html import escape
+from django.utils.html import escape, strip_tags
+from django.views import defaults
 
 from config.env import env_bool, env_list, env_required, parse_database_url
 
@@ -2466,3 +2467,59 @@ class HealthCheckTests(SimpleTestCase):
     def test_health_check_is_the_first_middleware(self):
         # If anything moves above it, that middleware could turn the checker away.
         self.assertEqual(settings.MIDDLEWARE[0], 'heritage_media_availability.middleware.health_check')
+
+
+class ErrorPageTests(SimpleTestCase):
+    """
+    #59: friendly 404 and 500 pages, and noindex on every team page.
+
+    SimpleTestCase fails any test that queries the database, which also
+    checks that the error pages work while the database is down.
+    """
+
+    NOINDEX = '<meta name="robots" content="noindex">'
+
+    def visible_text(self, response):
+        """
+        The words a visitor sees in the page's <main> element, without tags.
+
+        Checking only <main> skips the <head>; stripping tags means a check
+        for a word can't match a class name (e.g. "text" in "text-2xl").
+        """
+        page = response.content.decode()
+        return strip_tags(page[page.index('<main'):page.index('</main>')])
+
+    def test_missing_page_shows_the_friendly_404(self):
+        response = self.client.get('/no-such-page/')
+        self.assertEqual(response.status_code, 404)
+        self.assertTemplateUsed(response, '404.html')
+        self.assertContains(response, self.NOINDEX, status_code=404, html=True)
+        text = self.visible_text(response)
+        self.assertIn("We couldn't find that page", text)
+        self.assertIn('The link may be mistyped or out of date.', text)
+        self.assertIn('Back to the form', text)
+        self.assertContains(response, f'href="{reverse("heritage_media_availability:team_form")}"', status_code=404)
+
+    def test_server_error_shows_the_friendly_500(self):
+        # Call Django's own 500 view, as it would after an error. It draws
+        # 500.html without the request, which is what this page must survive.
+        response = defaults.server_error(RequestFactory().get('/'))
+        self.assertEqual(response.status_code, 500)
+        self.assertContains(response, self.NOINDEX, status_code=500, html=True)
+        text = self.visible_text(response)
+        self.assertIn('Something went wrong on our end', text)
+        self.assertIn('Please try again in a few minutes.', text)
+        self.assertIn('Back to the form', text)
+        # It only asks them to try again; it doesn't send them to anyone.
+        self.assertNotIn('text', text.lower())
+        self.assertNotIn('Skye', text)
+        # The link preview tags need the request, so the 500 page leaves them out.
+        self.assertNotContains(response, 'og:url', status_code=500)
+
+
+class NoindexTests(TestCase):
+    """#59: the team form asks search engines not to list it (it names every volunteer)."""
+
+    def test_team_form_has_noindex(self):
+        response = self.client.get(reverse('heritage_media_availability:team_form'))
+        self.assertContains(response, ErrorPageTests.NOINDEX, html=True)

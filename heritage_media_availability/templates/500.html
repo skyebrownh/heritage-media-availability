@@ -1,0 +1,37 @@
+{% extends "heritage_media_availability/base.html" %}
+
+{% comment %}
+  #59: shown when the server hits an error, when DEBUG is off. Django looks
+  for a template named exactly "500.html", so it lives at the root of our
+  templates folder.
+
+  Django draws this page with no request and no context processors, so
+  nothing that might have caused the error (like the database) runs again
+  while showing it. That means it can't use anything that needs the
+  request: the link preview tags are emptied below, and the staging banner
+  doesn't show. {% url %} and {% static %} still work, since they only
+  read settings.
+
+  It only asks people to try again; it doesn't send them to anyone
+  (decision 2026-10-14).
+{% endcomment %}
+
+{% block title %}Something went wrong · Heritage Media Availability{% endblock %}
+
+{# The link preview tags need the request, which this page doesn't have. #}
+{% block link_preview %}{% endblock %}
+
+{% block content %}
+<div class="overflow-hidden rounded-lg bg-white shadow-sm">
+  <div class="px-4 py-5 sm:p-6">
+    <h1 class="text-2xl/7 font-bold text-gray-900 sm:text-3xl sm:tracking-tight">Something went wrong on our end</h1>
+    <p class="mt-4 text-gray-600">Please try again in a few minutes.</p>
+
+    {# A link, not a reload: reloading after a failed submit could send it again. #}
+    <a href="{% url 'heritage_media_availability:team_form' %}"
+       class="mt-6 flex w-full justify-center rounded-md bg-indigo-600 px-3.5 py-2.5 font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
+      Back to the form
+    </a>
+  </div>
+</div>
+{% endblock %}

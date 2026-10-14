@@ -1,6 +1,6 @@
 {% comment %}
-  Shared layout for every team-facing page (the form, the thanks page, and
-  the "form expired" page). Pages fill in the "title" and "content" blocks.
+  Shared layout for every team-facing page (the form, the thanks page, the
+  "form expired" page, and the 404 and 500 error pages). Pages fill in the "title" and "content" blocks.
   Design rules (CLAUDE.md): mobile first at 375px, Tailwind Plus defaults.
 {% endcomment %}
 {% load static link_preview %}
@@ -11,6 +11,12 @@
   {# Makes phones render at real width instead of zoomed out (mobile first). #}
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Heritage Media Availability{% endblock %}</title>
+  {% comment %}
+    #59: ask search engines not to list these pages. The form names every
+    volunteer, and the link is only meant for the group chat. Chat apps
+    ignore this tag, so the link preview below still works.
+  {% endcomment %}
+  <meta name="robots" content="noindex">
   {% comment %}
     #33: pre-built Tailwind CSS, served by WhiteNoise. It's built from
     tailwind/input.css with the standalone CLI, so phones download one small cached file instead of
@@ -35,7 +41,10 @@
     request. og:url always points at the form, the page being shared, even
     on the thanks page. On the staging site the title starts with "[TEST]",
     so a preview of the staging link says it's the test site (#45).
+    The tags sit in a block because they need the request, and the 500
+    page (#59) is drawn without one, so it empties this block.
   {% endcomment %}
+  {% block link_preview %}
   <meta name="description" content="Let the Scheduler know which days you can't serve.">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Heritage Media Availability">
@@ -46,6 +55,7 @@
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="A white calendar with a check mark, next to the words Heritage Media Availability.">
+  {% endblock %}
 </head>
 {% comment %}
   #41: Tailwind Plus's gray page behind a white card. Text is 16px at every
