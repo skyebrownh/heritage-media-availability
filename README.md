@@ -11,21 +11,26 @@ See [SPEC.md](SPEC.md) for the full requirements (with IDs like TF-3 and AD-2, p
 
 ## Status
 
-v1 is in development, with launch to the full team planned for **October 25, 2026**. Week 1 (setup, roster, deploy) is done. Progress on the rest is tracked by [milestone](../../milestones): Week 2 (team form), Week 3 (admin views), Week 4 (pilot), and Post-launch.
+v1 is built and live, on production and on a staging copy for testing. The pilot is under way on staging ([PILOT.md](PILOT.md)), and the app launches to the full team on **October 25, 2026**, collecting November's availability. Open work is on the "Pilot and launch" and "Post-launch" [milestones](../../milestones).
 
 ## How work happens
 
 1. Each unit of work is a GitHub issue with a directive and acceptance criteria (templates in `.github/ISSUE_TEMPLATE/`).
-2. Work happens on a branch named `<issue#>-<short-slug>`.
-3. A pull request with `Closes #<issue>` is **squash merged** into `main`, which closes the issue and deploys.
+2. A short plan is agreed before any code, and posted on the issue.
+3. Work happens on a branch named `<issue#>-<short-slug>`.
+4. A pull request with `Closes #<issue>` is **squash merged** into `main`, which closes the issue and deploys. Issues that must ship together share one branch and PR, which is **rebase merged** so each commit is kept.
+5. Releases (`v1.0.0-pilot`, `v1.0.0`, …) name meaningful points, such as what the pilot used and what launched.
+
+[CLAUDE.md](CLAUDE.md) has the full workflow and conventions.
 
 ## Tech stack
 
 - Python 3.13, Django (server-rendered templates)
-- Postgres everywhere (local and production), configured with `DATABASE_URL`
-- Tailwind CSS (from the CDN for now; pre-built CSS before launch, see #14) and a little vanilla JavaScript
+- Postgres 18 everywhere (local and production), configured with `DATABASE_URL`
+- Tailwind CSS v4, pre-built with Tailwind's standalone CLI into a committed `app.css` (no Node or npm), with pages adapted from Tailwind Plus blocks, and a little vanilla JavaScript
+- The admin styled by [django-unfold](https://unfoldadmin.com)
 - gunicorn + WhiteNoise in production
-- Hosted on [Railway](https://railway.com), deployed automatically from `main`
+- Hosted on [Railway](https://railway.com), deployed automatically from `main` to production and to a staging copy
 - [uv](https://docs.astral.sh/uv/) for Python packages and commands
 
 ## Local setup
@@ -33,9 +38,15 @@ v1 is in development, with launch to the full team planned for **October 25, 202
 **Prerequisites:** [uv](https://docs.astral.sh/uv/getting-started/installation/) and Postgres. On macOS with Homebrew:
 
 ```sh
-brew install postgresql@17
-brew services start postgresql@17
+brew install postgresql@18
+brew services start postgresql@18
 createdb heritage_media_availability
+```
+
+Homebrew doesn't put a versioned Postgres on your PATH, so add this line to `~/.zshrc` and open a new terminal tab:
+
+```sh
+export PATH="/opt/homebrew/opt/postgresql@18/bin:$PATH"
 ```
 
 **Then:**
@@ -49,10 +60,17 @@ uv sync                  # installs Python and the exact packages from uv.lock
 
 uv run --env-file .env python manage.py migrate
 uv run --env-file .env python manage.py createsuperuser
+uv run --env-file .env python manage.py seed dashboard   # sample roster and answers
 uv run --env-file .env python manage.py runserver
 ```
 
-Open http://127.0.0.1:8000/ for the site and http://127.0.0.1:8000/admin/ for the roster.
+Open http://127.0.0.1:8000/ for the site and http://127.0.0.1:8000/admin/ for the admin.
+
+**Only to change styles:** download Tailwind's standalone CLI once (`bin/` is git-ignored), then rebuild `app.css` after changing template classes (see Common commands):
+
+```sh
+mkdir -p bin && curl -sSL -o bin/tailwindcss https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.3/tailwindcss-macos-arm64 && chmod +x bin/tailwindcss
+```
 
 ### Environment variables
 
@@ -65,6 +83,7 @@ Settings come from environment variables, never from code. Locally they live in 
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1` | The app's domain, e.g. `example.up.railway.app` |
 | `CSRF_TRUSTED_ORIGINS` | *(empty)* | `https://` + the app's domain |
 | `DATABASE_URL` | `postgresql://<your-mac-username>@localhost:5432/heritage_media_availability` | Railway reference: `${{Postgres.DATABASE_URL}}` |
+| `STAGING` | *(not set)* | `true` on staging only: shows the "Test site" banner and lets `seed` run there |
 
 To generate a secret key:
 
@@ -81,6 +100,9 @@ uv run python -c "from django.core.management.utils import get_random_secret_key
 | Create migrations after model changes | `uv run --env-file .env python manage.py makemigrations` |
 | Apply migrations | `uv run --env-file .env python manage.py migrate` |
 | Check production settings | `DEBUG=false uv run --env-file .env python manage.py check --deploy` |
+| Reset local data to a test scenario | `uv run --env-file .env python manage.py seed <scenario>` (`seed --list` shows them; keeps admin logins) |
+| Rebuild the CSS after changing template classes | `bin/tailwindcss -i tailwind/input.css -o heritage_media_availability/static/heritage_media_availability/app.css --minify` |
+| Rebuild the icon and link preview PNGs | `sh branding/build.sh` |
 | Add a Python package | `uv add <package>` |
 
 Tests use Django's built-in test runner. They run against a temporary Postgres database that's created and deleted automatically.
@@ -91,22 +113,29 @@ Tests use Django's built-in test runner. They run against a temporary Postgres d
 config/                       Django project: settings, URLs, WSGI
   env.py                      Reads settings from environment variables
 heritage_media_availability/  The app: models, admin, views, templates, tests
+tailwind/input.css            Tailwind's input; built into the app's static app.css
+branding/                     The icon and link preview drawn as SVGs, and the script that makes the PNGs
 gunicorn.conf.py              Production web server settings
 backup/                       Weekly production database backups, run on Skye's Mac
 railway.json                  Railway build/deploy commands
+.github/                      Issue and pull request templates
 SPEC.md                       Requirements and decisions (source of truth)
 CLAUDE.md                     Conventions and architecture notes
+PILOT.md                      The pilot runbook: rounds, tester steps, launch checklist
 ```
 
 ## Deployment
 
-Merging to `main` deploys to Railway automatically. **Treat every merge to `main` as a release.** Work happens on short-lived branches, one per step.
+Merging to `main` deploys to Railway automatically, to production and staging, so **every merge goes live**. (Releases are separate: named markers for meaningful points, such as the launch. See CLAUDE.md, Releases.)
 
 On each deploy, Railway:
 
 1. **Builds** with Railpack, installing exactly what's in `uv.lock`.
 2. **Pre-deploy:** runs `python manage.py migrate`. If it fails, the deploy is cancelled and the previous version keeps running.
 3. **Starts:** `migrate --check` (refuses to start if any migration is missing), then `collectstatic`, then gunicorn.
+4. **Health check:** waits for `/healthz/` to answer `ok` before switching visitors to the new version. If it never does, the deploy fails and the previous version keeps running. (Set in each environment's Settings → Deploy → Healthcheck Path.)
+
+**Staging** (https://heritage-media-availability-staging.up.railway.app) is a second copy with its own database and a yellow "Test site" banner, where testers try things without touching real data. Every Railway CLI command for it needs `--environment staging`. Resetting it, refreshing it with production's data, and creating its admin login are in CLAUDE.md's Staging section; the pilot that runs there is in [PILOT.md](PILOT.md).
 
 **Creating or resetting the production admin account** uses the [Railway CLI](https://docs.railway.com/guides/cli):
 
@@ -150,31 +179,28 @@ This copies `backup/backup.sh` into the backup folder and installs a `launchd` j
 
 ### Practice restore
 
-Do this now and then to make sure the backups really work. It restores into a throwaway local database, never production or staging. Production runs Postgres 18, so the practice uses Postgres 18 too (`brew install postgresql@18`), started on port 5433 so it doesn't clash with the everyday local Postgres.
+Do this now and then to make sure the backups really work. It restores into a throwaway database on your everyday local Postgres, never production or staging. Local Postgres is 18, the same as production (see Local setup).
 
 ```sh
-# Start Postgres 18 just for this, and make an empty database
-PG18=/opt/homebrew/opt/postgresql@18/bin
-LC_ALL=en_US.UTF-8 $PG18/pg_ctl -D /opt/homebrew/var/postgresql@18 -o "-p 5433" -l /tmp/pg18.log -w start
-$PG18/createdb -p 5433 heritage_restore_test
+# Make an empty database
+createdb heritage_restore_test
 
 # Load the newest backup (ON_ERROR_STOP stops at the first error instead of carrying on)
 F=$(ls ~/Backups/heritage-media-availability/heritage-*.sql.gz | sort | tail -1)
-gunzip -c "$F" | $PG18/psql -p 5433 -d heritage_restore_test -v ON_ERROR_STOP=1 -q -o /dev/null
+gunzip -c "$F" | psql -d heritage_restore_test -v ON_ERROR_STOP=1 -q -o /dev/null
 
 # Count members in the copy, then in production (read-only); they should match
 # (also try heritage_media_availability_submission and _closedmonth)
-$PG18/psql -p 5433 -d heritage_restore_test -At -c "select count(*) from heritage_media_availability_member"
+psql -d heritage_restore_test -At -c "select count(*) from heritage_media_availability_member"
 railway ssh --service Postgres --environment production -- psql -At -c "select count(*) from heritage_media_availability_member"
 
 # Clean up
-$PG18/dropdb -p 5433 heritage_restore_test
-$PG18/pg_ctl -D /opt/homebrew/var/postgresql@18 -w stop
+dropdb heritage_restore_test
 ```
 
 Counts can differ by a few submissions if someone submitted since the backup was made.
 
-Last tested 2026-10-14: restored with no errors, and members (17), submissions (0) and closed months (2) matched production.
+Last tested 2026-10-14, following these steps on the everyday local Postgres 18: restored with no errors, and members (17) matched production. (An earlier test that day also matched submissions (0) and closed months (2).)
 
 ### Emergency restore into Railway
 
