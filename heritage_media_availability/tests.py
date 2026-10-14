@@ -2428,3 +2428,41 @@ class UnfoldAdminTests(TestCase):
             with self.subTest(page=name):
                 self.assertEqual(response.status_code, 200)
                 self.assertNotContains(response, "switchTheme('dark')")
+
+
+@override_settings(
+    DEBUG=False,
+    SECURE_SSL_REDIRECT=True,
+    ALLOWED_HOSTS=['heritage.up.railway.app'],
+)
+class HealthCheckTests(SimpleTestCase):
+    """
+    #60: Railway's deploy health check gets "ok" from /healthz/.
+
+    Settings are production-like (HTTPS redirect on, only the real address
+    allowed), and SimpleTestCase fails any test that queries the database,
+    which also checks that /healthz/ never touches it.
+    """
+
+    CHECKER_HOST = 'healthcheck.railway.app'
+
+    def test_healthz_answers_railways_checker(self):
+        # Plain HTTP and an unlisted host, exactly as Railway's checker sends it.
+        response = self.client.get('/healthz/', HTTP_HOST=self.CHECKER_HOST)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b'ok')
+
+    def test_other_pages_still_reject_the_checkers_host(self):
+        # The bypass covers /healthz/ only; the host check applies everywhere else.
+        with self.assertLogs('django.security.DisallowedHost', 'ERROR'):
+            response = self.client.get('/', HTTP_HOST=self.CHECKER_HOST)
+        self.assertEqual(response.status_code, 400)
+
+    def test_other_pages_still_redirect_to_https(self):
+        response = self.client.get('/', HTTP_HOST='heritage.up.railway.app')
+        self.assertEqual(response.status_code, 301)
+        self.assertEqual(response['Location'], 'https://heritage.up.railway.app/')
+
+    def test_health_check_is_the_first_middleware(self):
+        # If anything moves above it, that middleware could turn the checker away.
+        self.assertEqual(settings.MIDDLEWARE[0], 'heritage_media_availability.middleware.health_check')

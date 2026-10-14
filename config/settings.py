@@ -80,6 +80,10 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # Railway's deploy health check (#60). It must stay first: it answers
+    # /healthz/ before SecurityMiddleware (HTTPS redirect) and the host check
+    # can turn Railway's checker away. Reasons in its docstring.
+    'heritage_media_availability.middleware.health_check',
     'django.middleware.security.SecurityMiddleware',
     # WhiteNoise serves static files (admin CSS/JS) straight from gunicorn, so
     # we don't need a separate web server. It goes right after SecurityMiddleware
