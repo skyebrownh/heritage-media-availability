@@ -55,8 +55,8 @@ Write good explanatory comments throughout. I'll be reading this code to learn f
 - Never commit directly to `main`. Branches start from an up-to-date `main`. Every branch has one of two shapes:
   - **Single-issue branch** (the default): one issue, one branch named `<issue#>-<short-slug>` (e.g. `12-closed-month-admin`), one PR, **squash merged**, so it becomes one commit on `main` titled after the issue.
   - **Multi-issue branch**: for issues that must ship together (e.g. one would leave the live site half-finished without the next). The issues are built one after another on one branch named after the set (e.g. `unfold-admin`), with one PR that closes them all, **rebase merged**, so `main` keeps each commit. An issue can have more than one commit (e.g. a fix to the first issue found while testing the second). Each issue still gets its own plan, handover, and review; I'll name the set when we decide to batch.
-- Leave changes uncommitted until I've reviewed them in my editor. When the work is ready, suggest a commit message and wait for my OK before committing.
-- Open a PR with `gh pr create` using `.github/pull_request_template.md`. The description must include `Closes #<issue>` for each issue, so merging closes them. For a multi-issue branch, open the PR once every issue in the set is committed.
+- Leave changes uncommitted until I've reviewed them in my editor. When the work is ready, suggest a commit message and wait for my OK (in chat, or by running `/ship` or `/ship-set`) before committing.
+- Every PR uses `.github/pull_request_template.md` and includes `Closes #<issue>` for each issue, so merging closes them. For a multi-issue branch, the PR opens once every issue in the set is committed. `/ship` and `/ship-set` open PRs this way (see Conventions).
 - Commits are never rewritten once committed. Something wrong after a merge becomes a new bug issue.
 
 **What you may do on your own:**
@@ -71,6 +71,8 @@ Write good explanatory comments throughout. I'll be reading this code to learn f
 - Closing an issue any way other than merging its PR
 - Changing repo settings, deleting branches on GitHub, or editing milestones and labels beyond adding new ones I've agreed to
 - Creating a release or pushing a tag (see Releases)
+
+Running `/ship` or `/ship-set` is my approval to commit, and `/merge <PR#>` is my approval to merge (#69). Saying it in chat still works. These skills only start when I type them.
 
 ### Releases (#53)
 
@@ -90,7 +92,7 @@ Releases name the meaningful points in the app's life, so there's a record of ex
 
 Formats and routines for each step of the loop above. Recent issues and PRs (e.g. #9 and PR #19) show them in practice.
 
-- **Plan comments.** Post the approved plan on the issue under a `## Plan (approved)` heading. Put any decisions made while planning first (with the date if they belong in SPEC.md), then the branch name, then numbered steps by file, then what's deliberately not included. If the build has to differ from the plan, say so in the handover and the PR.
+- **Plan comments.** Post the approved plan on the issue under a `## Plan (approved)` heading. Put any decisions made while planning first (with the date if they belong in SPEC.md), then the branch name (on a multi-issue branch, followed by a `**Set:** #A, #B, #C` line listing every issue in the set, which `/ship-set` reads), then numbered steps by file, then what's deliberately not included. If the build has to differ from the plan, say so in the handover and the PR.
 - **Handing work over for review.** Before asking to commit, give me:
   - what changed, as a short list with a link to each file;
   - the automated test result (count, pass or fail) and that `check --deploy` is clean;
@@ -99,29 +101,8 @@ Formats and routines for each step of the loop above. Recent issues and PRs (e.g
 
   Then wait. If testing turns something up, fix it on the same branch, and add a regression test when it's a bug.
 - **Test data.** `manage.py seed <scenario>` resets my local database to a known starting state (scenarios live in `heritage_media_availability/seeding.py`). Seed the setup, not the behavior under test: anything a manual step exists to check (submitting, resubmitting, closing or reopening a month, marking someone inactive), I do by hand during the steps, and the steps say so. When an issue needs a different starting state, it adds or updates a scenario in its own PR.
-- **Commit messages.** The co-author line always ends the message.
-  - Single-issue branch: the issue's title.
-  - Multi-issue branch: the issue's title for its main commit; any further commit gets a short description of the change. Every commit's body says which issue it's for (`Part of #39.`), since rebase merging keeps these commits on `main`.
-- **PR descriptions.** Follow the template:
-  - `Closes #N` (one line per issue on a multi-issue branch);
-  - "What changed" by file (grouped by issue on a multi-issue branch);
-  - each issue's acceptance criteria copied and ticked, with the test count on the tests line;
-  - numbered "How to test" steps; a multi-issue PR ends with steps that check the issues together;
-  - the checklist, with a reason for any box that doesn't apply (e.g. "no model changes").
-
-  Use the issues' milestone and labels. A multi-issue PR's title names the set (e.g. "Move the admin to Unfold").
-- **Merging.**
-  - Single-issue PR: squash, titled `<issue title> (#<PR number>)`, e.g. `gh pr merge 19 --squash --subject "Pre-fill a person's earlier submission for the month (#19)"`.
-  - Multi-issue PR: rebase, e.g. `gh pr merge 43 --rebase`. The branch's commits land on `main` as they are.
-- **After a merge:**
-  1. `git checkout main && git pull --ff-only`
-  2. Confirm `git diff main <branch>` is empty.
-  3. `git branch -D <branch>` (needed because squash and rebase merging both create new commits, so git doesn't see the branch as merged).
-  4. `git fetch --prune`
-  5. Check the issue (or every issue in the set) closed.
-  6. Remind me what to check on Railway.
-
-  GitHub deletes the remote branch automatically.
+- **Committing and opening the PR.** `/ship` on a single-issue branch, or `/ship-set <issue#>` (`follow-up: <description>` for a further commit) on a multi-issue branch, checks there's a handover and only reviewed files, re-runs the checks, commits (the issue's title, or a short description for a follow-up; `Part of #N.` on a multi-issue branch; the co-author line last), pushes, and opens the PR from the template (`Closes` lines, What changed by file, criteria copied and ticked with the test count, How to test, the checklist with reasons, the issues' milestone and labels). The steps are in `.claude/skills/ship/` and `.claude/skills/ship-set/`.
+- **Merging and after.** `/merge <PR#>` waits out GitHub's `UNKNOWN` state, squash merges a single-issue PR (subject `<issue title> (#<PR number>)`) or rebase merges a multi-issue PR, runs the after-merge clean-up (update `main`, check the branch diff is empty, delete the local branch, prune, check the issues closed), and lists what to check on Railway. A conflict is resolved by merging `main` into the branch, never rebasing or force-pushing. The steps are in `.claude/skills/merge/`.
 - **Ideas that come up mid-issue** become a new issue, or a comment on an existing one (e.g. design ideas go on the polish issue, #14), never extra scope on the current branch.
 - **Long text for `gh`** (issue bodies, plan comments, PR descriptions) goes in a file in the scratchpad directory, passed with `--body-file`, so quotes and backticks survive the shell.
 
@@ -190,6 +171,7 @@ All commands load local settings from `.env` (copy `.env.example` first).
 - Rebuild the icon and link preview PNGs (after changing an SVG in `branding/`): `sh branding/build.sh`
 - Backups (#3): install or update the weekly job with `bash backup/install.sh` (`--uninstall` stops it); check on it with `~/Backups/heritage-media-availability/backup.sh status`; back up now with `~/Backups/heritage-media-availability/backup.sh now`. Practice restore steps are in README's Backups section. Before running anything against production, check with Skye.
 - Pilot feedback (#67): in Claude Code, `/pilot-feedback round <1|2> <pasted notes>` turns a tester's notes into draft bug or feature issues, "won't do" items with reasons, duplicates of existing issues, or questions, following PILOT.md. It creates nothing until I approve; "won't do" items reach PILOT.md through their own documentation issue. Only I start it (`disable-model-invocation`). The skill is `.claude/skills/pilot-feedback/SKILL.md`.
+- Ship and merge (#69): `/ship` commits, pushes and opens the PR for a single-issue branch; `/ship-set <issue#> [follow-up: <description>]` does the same on a multi-issue branch, opening the set's PR once every issue is committed; `/merge <PR#>` merges (this deploys) and runs the after-merge clean-up. Running each is my approval. Only I start them (`disable-model-invocation`).
 - Make migrations after changing models: `uv run --env-file .env python manage.py makemigrations`
 - Create an issue: `gh issue create --template <feature.md|bug.md>` (or `--title`/`--body-file` with `--milestone` and `--label`)
 - Open a PR: `gh pr create --fill` then edit, or `--title`/`--body-file`
