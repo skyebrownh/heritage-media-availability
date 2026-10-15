@@ -63,7 +63,7 @@ Two parts.
 
 ### After round 1
 
-- [ ] Run `/pilot-feedback round 1` in Claude Code with your notes. Each piece of feedback becomes an issue on the "Pilot and launch" milestone (bug or feature), or a "won't do" with a reason, recorded in [Pilot feedback: won't do](#pilot-feedback-wont-do) through its own documentation issue.
+- [ ] Run `/pilot-feedback round 1` in Claude Code with your notes. Each piece of feedback becomes an issue (bug or feature) on the "Pilot and launch" milestone, or on "Post-launch" if it isn't needed before launch (as #71 was), or a "won't do" with a reason, recorded in [Pilot feedback: won't do](#pilot-feedback-wont-do) through its own documentation issue.
 - [ ] Fix anything you wouldn't want the lead to see before round 2.
 - [ ] Don't refresh staging between rounds. The tester's answers make the dashboard walkthrough look like a real month.
 
@@ -81,9 +81,18 @@ Two parts.
 - [ ] Post the **production** link in the group chat with a short "how to" message, and check that its preview card shows.
 - [ ] From then on, problems found on production become new issues.
 
+## Results
+
+What each round found, so the pilot's outcome stays with the plan. Issues from the feedback are linked; their status lives in GitHub.
+
+- **Round 1 (2026-10-14):** no bugs. One idea, a note about each month's special events (e.g. December's Kids Christmas Play), became #71 on "Post-launch", since the form works without it.
+- **Round 2 (2026-10-14):** positive feedback only, so no issues and no "won't do" items. The lead agreed this is how the team will collect availability going forward.
+
 ## Pilot feedback: won't do
 
 Feedback from the pilot that was decided against, with the reason, so the decision isn't reopened by accident. `/pilot-feedback` suggests these; each round's approved items are added here by a documentation issue (#67), never directly. Testers aren't named.
 
 | Round | Feedback | Reason | Date |
 | --- | --- | --- | --- |
+
+None: no pilot feedback was turned down.
