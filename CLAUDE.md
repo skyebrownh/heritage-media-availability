@@ -55,7 +55,7 @@ Write good explanatory comments throughout. I'll be reading this code to learn f
 - Never commit directly to `main`. Branches start from an up-to-date `main`. Every branch has one of two shapes:
   - **Single-issue branch** (the default): one issue, one branch named `<issue#>-<short-slug>` (e.g. `12-closed-month-admin`), one PR, **squash merged**, so it becomes one commit on `main` titled after the issue.
   - **Multi-issue branch**: for issues that must ship together (e.g. one would leave the live site half-finished without the next). The issues are built one after another on one branch named after the set (e.g. `unfold-admin`), with one PR that closes them all, **rebase merged**, so `main` keeps each commit. An issue can have more than one commit (e.g. a fix to the first issue found while testing the second). Each issue still gets its own plan, handover, and review; I'll name the set when we decide to batch.
-- Leave changes uncommitted until I've reviewed them in my editor. When the work is ready, suggest a commit message and wait for my OK (in chat, or by running `/ship` or `/ship-set`) before committing.
+- Claude commits on the issue's branch during the build and never pushes before `/ship`. I review the committed branch from its handover.
 - Every PR uses `.github/pull_request_template.md` and includes `Closes #<issue>` for each issue, so merging closes them. For a multi-issue branch, the PR opens once every issue in the set is committed. `/ship` and `/ship-set` open PRs this way (see Conventions).
 - Commits are never rewritten once committed. Something wrong after a merge becomes a new bug issue.
 
@@ -65,14 +65,14 @@ Write good explanatory comments throughout. I'll be reading this code to learn f
 - Comment on issues and PRs
 
 **Only with my explicit approval:**
-- Committing (I review uncommitted changes first)
+- Pushing any branch, or committing on `main`
 - Merging a PR (this deploys). Remind me of that before asking.
 - Pushing to `main` by any route
 - Closing an issue any way other than merging its PR
 - Changing repo settings, deleting branches on GitHub, or editing milestones and labels beyond adding new ones I've agreed to
 - Creating a release or pushing a tag (see Releases)
 
-Running `/ship` or `/ship-set` is my approval to commit, and `/merge <PR#>` is my approval to merge (#69). Saying it in chat still works. These skills only start when I type them.
+Running `/ship` is my approval to push and open the PR, and `/merge <PR#>` is my approval to merge (#69). Saying it in chat still works. These skills only start when I type them.
 
 ### Releases (#53)
 
