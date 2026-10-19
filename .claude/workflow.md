@@ -1,11 +1,17 @@
 # Workflow facts
 
 <!--
-Facts about this project that Skye's personal skills (/ship, /merge) read,
+Facts about this project that Skye's personal skills (/handover, /ship, /merge) read,
 so the skills themselves stay the same in every project. Written by
 /setup-project; edit by hand any time. Keep each section's heading exactly as
 it is: the skills find facts by heading.
 -->
+
+## Process version
+
+<!-- Which version of Skye's process this project is set up for. Change it only through /setup-project, which applies the migrations that bring a project up to date. -->
+
+3
 
 ## Default branch
 
@@ -13,12 +19,20 @@ it is: the skills find facts by heading.
 
 ## Checks before committing
 
-<!-- Every command must pass before /ship commits. One per line. -->
+<!-- Every command must pass before each commit during the build, and again when /ship runs. One per line. -->
 
 ```sh
 uv run --env-file .env python manage.py test
 DEBUG=false uv run --env-file .env python manage.py check --deploy
 ```
+
+## Manual test setup
+
+<!-- What Skye does before trying a change by hand, and anything to undo afterwards. /handover starts its manual test steps from here. -->
+
+- reset local data: `uv run --env-file .env python manage.py seed <scenario>` (the handover names the scenario; admin logins are kept)
+- start the dev server: `uv run --env-file .env python manage.py runserver`, then open http://127.0.0.1:8000/
+- for admin changes, log in at http://127.0.0.1:8000/admin/ with your local superuser
 
 ## Pull requests
 
@@ -28,7 +42,7 @@ DEBUG=false uv run --env-file .env python manage.py check --deploy
 ## Merging
 
 - Single-issue PR: squash, subject `<issue title> (#<PR>)`
-- Multi-issue PR: rebase
+- Parent PR: rebase
 - Merging deploys: yes
 - Where it deploys: Railway production and staging, both from `main`
 

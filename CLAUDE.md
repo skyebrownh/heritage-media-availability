@@ -18,10 +18,10 @@ This app only collects and displays availability. It never schedules anyone.
 
 Every piece of work follows this loop. `gh` (GitHub CLI) is installed and authenticated for the repo.
 
-1. **Draft the issue.** You draft it in chat using the matching template in `.github/ISSUE_TEMPLATE/` (feature or bug). I approve or edit it. Then you create it with `gh issue create`, with a milestone and area label.
-2. **Plan.** Before writing code, show a short plan (files to create or change, and why) and wait for my approval. Once approved, post the plan as a comment on the issue (`gh issue comment`) so the reasoning stays with the work.
-3. **Build in small steps.** One issue = one requirement or a small group of related ones. Usually one issue = one branch = one PR; issues that must ship together share a branch and PR (see Git workflow). Never build ahead of the current issue; anything else becomes a new issue.
-4. **Tell me how to test.** When the work is done, run the automated tests and give me exact manual test steps (what to click, what I should see), mapped to the issue's acceptance criteria.
+1. **Draft the issue** (`/draft-issue`). You draft it in chat from the matching template in `.github/ISSUE_TEMPLATE/` (feature, bug, or parent for bigger work split into child issues). I approve or edit it. Then you create it, with a milestone and area label.
+2. **Plan** (`/plan-issue`). Before writing code, show a plan and wait for my approval. Once approved, it's posted on the issue so the reasoning stays with the work.
+3. **Build in small steps** (`/build`). One issue = one requirement or a small group of related ones, usually on one branch with one PR. Issues that must ship together become children of a parent issue, whose `**Ships as:**` line says how they ship (see Git workflow). Never build ahead of the current issue; anything else becomes a new issue.
+4. **Hand it over** (`/handover`). When the work is committed, run the checks and give me exact manual test steps (what to click, what I should see), mapped to the issue's acceptance criteria.
 5. **Dependencies.** Ask before adding any package. Prefer the standard library and Django built-ins.
 6. **Keep docs current.** If a decision changes what the app does, update the requirement in SPEC.md in the same PR. Decisions that don't fit any requirement get a dated entry in SPEC.md's Decisions section. Discussion and context live in the issue. This file holds only conventions, standards, and architectural context; update it when those change or when we add a command.
 
@@ -52,27 +52,27 @@ Write good explanatory comments throughout. I'll be reading this code to learn f
 ### Git workflow
 
 - The local repo is the working copy. GitHub (`origin`) is the upstream. **Railway deploys automatically from `main`, so merging to `main` is deploying.**
-- Never commit directly to `main`. Branches start from an up-to-date `main`. Every branch has one of two shapes:
-  - **Single-issue branch** (the default): one issue, one branch named `<issue#>-<short-slug>` (e.g. `12-closed-month-admin`), one PR, **squash merged**, so it becomes one commit on `main` titled after the issue.
-  - **Multi-issue branch**: for issues that must ship together (e.g. one would leave the live site half-finished without the next). The issues are built one after another on one branch named after the set (e.g. `unfold-admin`), with one PR that closes them all, **rebase merged**, so `main` keeps each commit. An issue can have more than one commit (e.g. a fix to the first issue found while testing the second). Each issue still gets its own plan, handover, and review; I'll name the set when we decide to batch.
-- Leave changes uncommitted until I've reviewed them in my editor. When the work is ready, suggest a commit message and wait for my OK (in chat, or by running `/ship` or `/ship-set`) before committing.
-- Every PR uses `.github/pull_request_template.md` and includes `Closes #<issue>` for each issue, so merging closes them. For a multi-issue branch, the PR opens once every issue in the set is committed. `/ship` and `/ship-set` open PRs this way (see Conventions).
+- Never commit directly to `main`. Branches start from an up-to-date `main`. Work ships in one of two shapes:
+  - **Single issue** (the default): one issue, one branch named `<issue#>-<short-slug>` (e.g. `12-closed-month-admin`), one PR, **squash merged**, so it becomes one commit on `main` titled after the issue.
+  - **Parent issue**: for issues that must ship together (e.g. one would leave the live site half-finished without the next), or bigger work split up. Each child is its own issue with its own plan, branch, handover and review. The parent's `**Ships as:**` line says how they reach `main`: `one PR` folds each child into the parent's `<parent#>-<slug>` branch as one commit, and that one PR is **rebase merged**, so `main` keeps each child's commit; `one PR per child` gives each child an ordinary PR saying `Part of #<parent>`.
+- Claude commits on the issue's branch during the build and never pushes before `/ship`. I review the committed branch from its handover.
+- Every PR uses `.github/pull_request_template.md` and includes `Closes #<issue>` for each issue, so merging closes them. `/ship` opens PRs this way (see Conventions).
 - Commits are never rewritten once committed. Something wrong after a merge becomes a new bug issue.
 
 **What you may do on your own:**
 - Create issues I've approved
-- Push feature branches and open PRs, once I've approved the commits on them (none of these deploy)
+- Commit on the issue's branch during a build (never on `main`)
 - Comment on issues and PRs
 
 **Only with my explicit approval:**
-- Committing (I review uncommitted changes first)
+- Pushing any branch, or committing on `main`
 - Merging a PR (this deploys). Remind me of that before asking.
 - Pushing to `main` by any route
 - Closing an issue any way other than merging its PR
 - Changing repo settings, deleting branches on GitHub, or editing milestones and labels beyond adding new ones I've agreed to
 - Creating a release or pushing a tag (see Releases)
 
-Running `/ship` or `/ship-set` is my approval to commit, and `/merge <PR#>` is my approval to merge (#69). Saying it in chat still works. These skills only start when I type them.
+Running `/ship` is my approval to push and open the PR, and `/merge <PR#>` is my approval to merge (#69). Saying it in chat still works. These skills only start when I type them.
 
 ### Releases (#53)
 
@@ -90,20 +90,14 @@ Releases name the meaningful points in the app's life, so there's a record of ex
 
 ### Conventions we've settled on
 
-Formats and routines for each step of the loop above. Recent issues and PRs (e.g. #9 and PR #19) show them in practice.
+Formats and routines for each step of the loop above. Most of them live in Skye's personal skills (see Commands); this section holds what's specific to this project.
 
-- **Plan comments.** Post the approved plan on the issue under a `## Plan (approved)` heading. Put any decisions made while planning first (with the date if they belong in SPEC.md), then the branch name (on a multi-issue branch, followed by a `**Set:** #A, #B, #C` line listing every issue in the set, which `/ship-set` reads), then numbered steps by file, then what's deliberately not included. If the build has to differ from the plan, say so in the handover and the PR.
-- **Handing work over for review.** Before asking to commit, give me:
-  - what changed, as a short list with a link to each file;
-  - the automated test result (count, pass or fail) and that `check --deploy` is clean;
-  - numbered manual test steps, saying exactly what to click and what I should see. They start with "0. Run `seed <scenario>`" and refer to the seeded people by name (see Test data below);
-  - a suggested commit message.
-
-  Then wait. If testing turns something up, fix it on the same branch, and add a regression test when it's a bug.
+- **Plan comments.** `/plan-issue` posts the approved plan on the issue under `## Plan (approved)`, in its own format. Decisions that belong in SPEC.md get their date there. If the build has to differ from the plan, say so in the handover and the PR.
+- **Handing work over for review.** `/handover` runs the checks and posts a `## Handover` comment on the issue for the commit it covers. Here, its numbered manual test steps start with "0. Run `seed <scenario>`" and refer to the seeded people by name (see Test data below). If testing turns something up, fix it with a new commit on the same branch and hand over again, adding a regression test when it's a bug.
 - **Test data.** `manage.py seed <scenario>` resets my local database to a known starting state (scenarios live in `heritage_media_availability/seeding.py`). Seed the setup, not the behavior under test: anything a manual step exists to check (submitting, resubmitting, closing or reopening a month, marking someone inactive), I do by hand during the steps, and the steps say so. When an issue needs a different starting state, it adds or updates a scenario in its own PR.
-- **Committing and opening the PR.** `/ship` on a single-issue branch, or `/ship-set <issue#>` (`follow-up: <description>` for a further commit) on a multi-issue branch, checks there's a handover and only reviewed files, re-runs the checks, commits (the issue's title, or a short description for a follow-up; `Part of #N.` on a multi-issue branch; the co-author line last), pushes, and opens the PR from the template (`Closes` lines, What changed by file, criteria copied and ticked with the test count, How to test, the checklist with reasons, the issues' milestone and labels). `/ship` is Skye's personal skill from [claude-skills](https://github.com/skyebrownh/claude-skills) (#75); `/ship-set`'s steps are in `.claude/skills/ship-set/`.
+- **Pushing and opening the PR.** `/ship` checks the latest handover covers the branch tip, re-runs the checks, pushes, and opens the PR from the template, with the issue's milestone and labels. For a child of a `one PR` parent it folds the child into the parent's branch instead, and `/ship <parent#>` opens the parent's PR.
 - **Merging and after.** `/merge <PR#>` is also Skye's personal skill (#75). It merges in the style `.claude/workflow.md` gives, runs the after-merge clean-up (update `main`, check the branch diff is empty, delete the local branch, prune, check the issues closed), and lists what to check on Railway. A conflict is resolved by merging `main` into the branch, never rebasing or force-pushing.
-- **Project facts for the personal skills** (checks before committing, PR template, merge style, where merging deploys, what to check after) are in `.claude/workflow.md`. Update it with `/setup-project`, also a personal skill.
+- **Project facts for the personal skills** (process version, checks before committing, manual test setup, PR template, merge style, where merging deploys, what to check after) are in `.claude/workflow.md`. Update it with `/setup-project`, also a personal skill, which also brings the project up to a newer process version.
 - **Ideas that come up mid-issue** become a new issue, or a comment on an existing one (e.g. design ideas go on the polish issue, #14), never extra scope on the current branch.
 - **Long text for `gh`** (issue bodies, plan comments, PR descriptions) goes in a file in the scratchpad directory, passed with `--body-file`, so quotes and backticks survive the shell.
 
@@ -172,9 +166,9 @@ All commands load local settings from `.env` (copy `.env.example` first).
 - Rebuild the icon and link preview PNGs (after changing an SVG in `branding/`): `sh branding/build.sh`
 - Backups (#3): install or update the weekly job with `bash backup/install.sh` (`--uninstall` stops it); check on it with `~/Backups/heritage-media-availability/backup.sh status`; back up now with `~/Backups/heritage-media-availability/backup.sh now`. Practice restore steps are in README's Backups section. Before running anything against production, check with Skye.
 - Pilot feedback (#67): in Claude Code, `/pilot-feedback round <1|2> <pasted notes>` turns a tester's notes into draft bug or feature issues, "won't do" items with reasons, duplicates of existing issues, or questions, following PILOT.md. It creates nothing until I approve; "won't do" items reach PILOT.md through their own documentation issue. Only I start it (`disable-model-invocation`). The skill is `.claude/skills/pilot-feedback/SKILL.md`.
-- Ship and merge (#69, #75): `/ship` commits, pushes and opens the PR for a single-issue branch; `/ship-set <issue#> [follow-up: <description>]` does the same on a multi-issue branch, opening the set's PR once every issue is committed; `/merge <PR#>` merges (this deploys) and runs the after-merge clean-up. Running each is my approval. Only I start them (`disable-model-invocation`). `/ship` and `/merge` are personal skills (#75): link them once per machine with `./install.sh ship merge setup-project` in `~/Developer/claude-skills`. They read `.claude/workflow.md`; update it with `/setup-project`.
+- Workflow skills (#69, #75, #77): `/draft-issue <idea>` drafts issues; `/plan-issue <N>` plans one; `/build <N>` builds it on its branch, committing as it goes; `/handover` hands the branch over; `/ship [<N>]` pushes and opens the PR (or folds a child into its parent's branch); `/merge <PR#>` merges (this deploys) and runs the after-merge clean-up; `/whats-next` suggests what to do next. Running `/build`, `/ship` or `/merge` is my approval for that step. Only I start `/draft-issue`, `/build`, `/ship` and `/merge` (`disable-model-invocation`). They're Skye's personal skills from [claude-skills](https://github.com/skyebrownh/claude-skills): link them once per machine with `./install.sh` in `~/Developer/claude-skills`. They read `.claude/workflow.md`; update it with `/setup-project`.
 - Make migrations after changing models: `uv run --env-file .env python manage.py makemigrations`
-- Create an issue: `gh issue create --template <feature.md|bug.md>` (or `--title`/`--body-file` with `--milestone` and `--label`)
+- Create an issue: `gh issue create --template <feature.md|bug.md|parent.md>` (or `--title`/`--body-file` with `--milestone` and `--label`)
 - Open a PR: `gh pr create --fill` then edit, or `--title`/`--body-file`
 - Production readiness check: `DEBUG=false uv run --env-file .env python manage.py check --deploy` (should report no issues)
 - Create the pilot pre-release (on the newest commit on `main`): `gh release create v1.0.0-pilot --prerelease --target main --generate-notes --title "Pilot"`
