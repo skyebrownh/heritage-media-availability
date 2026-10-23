@@ -130,7 +130,7 @@ Merging to `main` deploys to Railway automatically, to production and staging, s
 On each deploy, Railway:
 
 1. **Builds** with Railpack, installing exactly what's in `uv.lock`.
-2. **Pre-deploy:** runs `python manage.py migrate`. If it fails, the deploy is cancelled and the previous version keeps running.
+2. **Pre-deploy:** runs `python manage.py migrate --noinput`. If it fails, the deploy is cancelled and the previous version keeps running.
 3. **Starts:** `migrate --check` (refuses to start if any migration is missing), then `collectstatic`, then gunicorn.
 4. **Health check:** waits for `/healthz/` to answer `ok` before switching visitors to the new version. If it never does, the deploy fails and the previous version keeps running. (Healthcheck Path in the settings below.)
 
