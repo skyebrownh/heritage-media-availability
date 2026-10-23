@@ -117,7 +117,6 @@ tailwind/input.css            Tailwind's input; built into the app's static app.
 branding/                     The icon and link preview drawn as SVGs, and the script that makes the PNGs
 gunicorn.conf.py              Production web server settings
 backup/                       Weekly production database backups, run on Skye's Mac
-railway.json                  Railway build/deploy commands
 .github/                      Issue and pull request templates
 SPEC.md                       Requirements and decisions (source of truth)
 CLAUDE.md                     Conventions and architecture notes
@@ -133,7 +132,7 @@ On each deploy, Railway:
 1. **Builds** with Railpack, installing exactly what's in `uv.lock`.
 2. **Pre-deploy:** runs `python manage.py migrate`. If it fails, the deploy is cancelled and the previous version keeps running.
 3. **Starts:** `migrate --check` (refuses to start if any migration is missing), then `collectstatic`, then gunicorn.
-4. **Health check:** waits for `/healthz/` to answer `ok` before switching visitors to the new version. If it never does, the deploy fails and the previous version keeps running. (Set in each environment's Settings → Deploy → Healthcheck Path.)
+4. **Health check:** waits for `/healthz/` to answer `ok` before switching visitors to the new version. If it never does, the deploy fails and the previous version keeps running. (Healthcheck Path in the settings below.)
 
 **Staging** (https://heritage-media-availability-staging.up.railway.app) is a second copy with its own database and a yellow "Test site" banner, where testers try things without touching real data. Every Railway CLI command for it needs `--environment staging`. Resetting it, refreshing it with production's data, and creating its admin login are in CLAUDE.md's Staging section; the pilot that runs there is in [PILOT.md](PILOT.md).
 
@@ -146,7 +145,14 @@ python manage.py createsuperuser     # or: python manage.py changepassword <user
 exit
 ```
 
-> **Note:** Railway stops reading `railway.json` on **2026-12-01**. Before then, these commands need to move to Railway's Infrastructure as Code or the dashboard. This is tracked as a Post-launch issue.
+**Railway settings.** The deploy commands live in the Railway dashboard, not in a file in this repo. Set these in Settings → Deploy, separately on **production and staging**:
+
+| Setting | Value |
+| --- | --- |
+| Builder | Railpack |
+| Pre-deploy Command | `python manage.py migrate --noinput` |
+| Start Command | `python manage.py migrate --check && python manage.py collectstatic --noinput && gunicorn config.wsgi` |
+| Healthcheck Path | `/healthz/` |
 
 ## Backups
 

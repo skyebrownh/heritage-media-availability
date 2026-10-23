@@ -175,13 +175,11 @@ All commands load local settings from `.env` (copy `.env.example` first).
 - Create a release: `gh release create v1.0.0 --target main --generate-notes --title "Launch"` (title it after what it marks)
 - List releases: `gh release list`
 
-Deploying: pushing/merging to `main` deploys on Railway. `railway.json` (JSON, so it can't hold comments) tells Railway to:
+Deploying: pushing/merging to `main` deploys on Railway. The deploy settings live in the Railway dashboard (Settings → Deploy), set separately on **production and staging**, and there is no `railway.json` (#2; Railway stops reading it on 2026-12-01, and Infrastructure as Code was rejected as more than three one-line settings need). The dashboard is the single source, so README's Railway settings list holds the exact values; change both together. The settings tell Railway to:
 - build with Railpack, which installs exactly what's in `uv.lock` and uses `.python-version`;
-- run `python manage.py migrate` before each deploy (a failed migration cancels the deploy, and the old version keeps running);
-- start with `migrate --check` (fails the deploy if any migration wasn't applied), then `collectstatic`, then `gunicorn config.wsgi` (gunicorn options live in `gunicorn.conf.py`).
-- The pre-deploy command is also set in the Railway dashboard (Settings → Deploy → Pre-deploy Command), because the first deploy didn't pick it up from `railway.json`.
-- Railway checks `/healthz/` on each new deploy and only switches visitors over once it answers `ok`; otherwise the deploy fails and the old version keeps running (#60). It's set in the dashboard (Settings → Deploy → Healthcheck Path) on both production and staging, not in `railway.json`. The `health_check` middleware answers it first in `MIDDLEWARE`, before the HTTPS redirect and host check, because Railway's checker uses plain HTTP and `Host: healthcheck.railway.app`. Don't add that host to `ALLOWED_HOSTS`: staging's `seed` and `load_snapshot` need every allowed host to contain "staging".
-- `railway.json` stops being read on 2026-12-01; the migration is tracked as a Post-launch issue.
+- run `python manage.py migrate --noinput` before each deploy (the Pre-deploy Command; a failed migration cancels the deploy, and the old version keeps running);
+- start with `migrate --check` (fails the deploy if any migration wasn't applied), then `collectstatic`, then `gunicorn config.wsgi` (the Start Command; gunicorn options live in `gunicorn.conf.py`).
+- Railway checks `/healthz/` on each new deploy and only switches visitors over once it answers `ok`; otherwise the deploy fails and the old version keeps running (#60). It's the dashboard's Healthcheck Path. The `health_check` middleware answers it first in `MIDDLEWARE`, before the HTTPS redirect and host check, because Railway's checker uses plain HTTP and `Host: healthcheck.railway.app`. Don't add that host to `ALLOWED_HOSTS`: staging's `seed` and `load_snapshot` need every allowed host to contain "staging".
 
 ### Staging (#45)
 
